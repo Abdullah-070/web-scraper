@@ -1,8 +1,5 @@
 # LinkedIn Scraper
 
-Implements `FR-1.3` (LinkedIn scraper module) and the Week 1 auth/rate-limit/
-pacing requirements (`FR-1.8`, `FR-1.9`, `FR-1.10`).
-
 ## Inputs
 
 | field | required | notes |

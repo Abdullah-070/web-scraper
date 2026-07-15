@@ -1,24 +1,3 @@
-"""
-LinkedIn Scraper (FR-1.3).
-
-Inputs:  keywords, location, industry, company_size
-Outputs: name, company, position, profile_url, email (if available), website
-
-Week 1 scope:
-- Full framework/interface compliance (BaseScraper).
-- User-supplied session auth (FR-1.8) -- no personal/dev account ever used.
-- Daily per-account rate limiting (FR-1.9).
-- Randomized human-like delays (FR-1.10).
-- Basic retry on network errors (foundation for FR-3.5).
-- CAPTCHA/block *detection* (raises cleanly) -- full CAPTCHA solving and
-  proxy rotation are Week 3 scope (FR-3.3/FR-3.4), not built here.
-
-Testing note: this module supports a `fixture_html` param so it can be
-fully exercised in CI/local dev against a saved HTML fixture instead of
-live LinkedIn -- this is how you test without touching any real account,
-personal or otherwise (NFR-1.6).
-"""
-
 from __future__ import annotations
 
 import logging
