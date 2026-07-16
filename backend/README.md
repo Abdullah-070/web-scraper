@@ -24,6 +24,8 @@ Server runs on the port specified in `.env`.
 - User authentication (signup, login) with JWT stored in httpOnly cookies
 - Role-based access control (admin, user)
 - Protected routes via middleware
+- Logout (clears auth cookie)
+- Forgot password flow with OTP verification via email
 
 ## API Endpoints
 

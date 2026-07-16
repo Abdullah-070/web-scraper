@@ -4,47 +4,147 @@ Base URL: `http://localhost:<PORT>/api`
 
 ## Authentication
 
-### POST /auth/signup
-Public endpoint. Creates a new user (role is always "user").
+### POST /auth/register
+Public. Creates a new user with the default role of `user`.
 
 **Body:**
-{
-  "name": "string",
-  "email": "string",
-  "password": "string"
-}
+```json
+{ "name": "string", "email": "string", "password": "string" }
+```
 
-**Response (201):**
+**Success Response (201):**
+```json
 {
   "message": "User registered successfully",
-  "user": { "id", "name", "email", "role" }
+  "user": { "id": "string", "name": "string", "email": "string", "role": "user" }
 }
+```
+
+**Error Responses:**
+- `400` - Missing fields: `{ "message": "Please provide all required fields" }`
+- `400` - User already exists: `{ "message": "User already exists" }`
 
 ### POST /auth/login
-Public endpoint. Logs in and sets an httpOnly cookie containing the JWT.
+Public. Authenticates a user and sets an httpOnly JWT cookie.
 
 **Body:**
-{
-  "email": "string",
-  "password": "string"
-}
+```json
+{ "email": "string", "password": "string" }
+```
 
-**Response (200):**
+**Success Response (200):**
+```json
 {
   "message": "Login successful",
-  "user": { "id", "name", "email", "role" }
+  "user": { "id": "string", "name": "string", "email": "string", "role": "user" }
 }
+```
+
+**Error Responses:**
+- `400` - Missing fields: `{ "message": "Please provide all required fields" }`
+- `400` - Invalid email: `{ "message": "Invalid credentials email" }`
+- `400` - Invalid password: `{ "message": "Invalid credentials" }`
+
+### POST /auth/logout
+Protected. Clears the auth cookie.
+
+**Success Response (200):**
+```json
+{ "message": "Logout successful" }
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
 
 ### GET /auth/me
-Protected (requires valid cookie). Returns the logged-in user's own info.
+Protected. Returns the authenticated user's profile.
 
-**Response (200):**
-{ "id", "name", "email", "role" }
+**Success Response (200):**
+```json
+{
+  "message": "User found",
+  "user": {
+    "_id": "string",
+    "name": "string",
+    "email": "string",
+    "role": "user"
+  }
+}
+```
+
+**Error Responses:**
+- `404` - User not found: `{ "message": "User not found" }`
+- `401` - Unauthorized: depends on `authMiddleware`
+
+### POST /auth/forgot-password
+Public. Generates an OTP, stores it on the user record, and sends it by email.
+
+**Body:**
+```json
+{ "email": "string" }
+```
+
+**Success Response (200):**
+```json
+{ "message": "OTP sent to email" }
+```
+
+**Error Responses:**
+- `404` - User not found: `{ "message": "User not found" }`
+- `500` - Server error: `{ "message": "Error occurred while processing forgot password request" }`
+
+### POST /auth/verify-otp
+Public. Verifies the OTP sent to email.
+
+**Body:**
+```json
+{ "email": "string", "otp": "string" }
+```
+
+**Success Response (200):**
+```json
+{ "message": "OTP verified successfully" }
+```
+
+**Error Responses:**
+- `404` - User not found: `{ "message": "User not found" }`
+- `400` - No OTP requested: `{ "message": "No OTP found, please request a new one." }`
+- `400` - OTP expired: `{ "message": "OTP has expired" }`
+- `400` - Wrong OTP: `{ "message": "Invalid OTP" }`
+- `400` - Too many attempts: `{ "message": "Maximum OTP attempts exceeded. Please request a new OTP." }`
+
+### POST /auth/reset-password
+Public. Resets the password after OTP verification.
+
+**Body:**
+```json
+{ "email": "string", "newPassword": "string" }
+```
+
+**Success Response (200):**
+```json
+{ "message": "Password reset successful" }
+```
+
+**Error Responses:**
+- `404` - User not found: `{ "message": "User not found" }`
+- `400` - OTP not verified: `{ "message": "OTP not verified. Please verify OTP before resetting password." }`
 
 ## Users
 
 ### GET /users
-Protected + Admin only. Returns list of all users.
+Protected. Admin only. Returns all users without passwords.
 
-**Response (200):**
-[ { "id", "name", "email", "role" }, ... ]
+**Success Response (200):**
+```json
+{
+  "users": [
+    { "_id": "string", "name": "string", "email": "string", "role": "user" }
+  ]
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `500` - Server error: `{ "message": "Internal server error" }`
