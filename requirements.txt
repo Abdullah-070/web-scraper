@@ -1,0 +1,18 @@
+# SDIP Scraper Engine -- Intern 3 track
+# Python 3.11+
+#
+# Queue: raw Redis (no Celery/RQ) -- decision made jointly with Intern 2,
+# since BullMQ (his Node side) and Celery/RQ store queue data in
+# framework-specific formats that can't read each other's jobs. Both
+# sides push/read plain JSON directly against Redis instead.
+
+redis==5.0.8
+pymongo==4.8.0
+
+playwright==1.46.0
+beautifulsoup4==4.12.3
+requests==2.32.3
+
+pytest==8.3.2
+pytest-asyncio==0.24.0
+mongomock==4.1.3
