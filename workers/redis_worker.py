@@ -1,24 +1,16 @@
 """
-Raw Redis queue worker (replaces the earlier Celery-based approach --
-architecture decision from Intern 2, confirmed over voice message).
+Raw Redis queue worker
 
-Why raw Redis instead of Celery/RQ: Intern 2 uses Node + BullMQ. BullMQ
-and Celery/RQ each serialize queue data into Redis in their own
-framework-specific format, so a Celery worker cannot read a BullMQ job
-and vice versa. The fix both sides agreed on: talk to Redis directly with
-plain client libraries (ioredis on his side, redis-py here), pushing and
-reading plain JSON. No queue framework in between.
-
-Flow (per Intern 2's voice message):
-    1. Frontend -> his API -> Mongo job doc created, status=pending
-    2. His API pushes {jobId, scraperType, inputParams} as JSON onto a
+Flow :
+    1. Frontend -> API -> Mongo job doc created, status=pending
+    2. API pushes {jobId, scraperType, inputParams} as JSON onto a
        Redis list
     3. This worker BRPOPs that same list
     4. On pickup: set status=running in Mongo
     5. Run the scraper
     6. Save result to Results collection, set status=completed/failed
 
-ASSUMPTION (flag with Intern 2 -- not yet confirmed): the Redis list key
+ASSUMPTION : the Redis list key
 name is "scrape_jobs" below. If his push side uses a different key, this
 is the only line that needs to change.
 """
@@ -59,12 +51,7 @@ def _get_scraper_registry():
 
 
 class RedisWorker:
-    """Watches a Redis list for scrape jobs and runs them.
-
-    This class does the BRPOP loop + Mongo status bookkeeping. The actual
-    scraper dispatch is delegated to `process_job`, which is what the
-    tests exercise directly (without needing a live Redis connection).
-    """
+    
 
     def __init__(self, redis_url: str = REDIS_URL, queue_key: str = QUEUE_KEY):
         self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
@@ -99,13 +86,7 @@ class RedisWorker:
 
 
 async def process_job(payload: dict) -> dict:
-    """Process a single job payload: {jobId, scraperType, inputParams}.
-
-    Separated from the Redis loop so it can be unit tested directly with
-    a plain dict, without needing a live Redis connection (mirrors how
-    tests/test_linkedin_scraper.py tests the scraper without a live
-    LinkedIn account).
-    """
+    
     job_id = payload.get("jobId")
     scraper_type = payload.get("scraperType")
     input_params = payload.get("inputParams", {})

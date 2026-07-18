@@ -2,9 +2,7 @@
 Tests for workers.redis_worker.process_job.
 
 Uses mongomock so these tests run without a live MongoDB or Redis
-connection -- mirrors the approach used for LinkedIn (fixture HTML
-instead of a live account): test the logic in isolation from live
-infrastructure.
+connection 
 """
 
 from pathlib import Path

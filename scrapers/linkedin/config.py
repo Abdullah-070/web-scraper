@@ -1,17 +1,8 @@
 """
-LinkedIn scraper configuration and input contract.
-
-Auth model (per mentor decision, Week 1):
+Auth model:
 - No LinkedIn partner API, no third-party impersonation library.
-- The END USER connects their own LinkedIn account through the platform
-  (Settings > API Keys pattern, Sec 2.7). This scraper NEVER uses a
-  developer/personal account for testing -- only a designated test
-  account/fixtures provided separately.
-- Credentials arrive as a session cookie string (`li_at` value) passed in
-  at runtime via `raw_params["auth"]["session_cookie"]`. This scraper does
-  not store credentials -- storage/encryption is the backend's job
-  (Intern 2); this module only consumes what it's given for the duration
-  of a single job run.
+- This scraper NEVER uses a  developer/personal account for testing
+- This scraper does not store credentials
 """
 
 from __future__ import annotations

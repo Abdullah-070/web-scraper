@@ -1,26 +1,11 @@
 """
-MongoDB persistence layer (per Intern 2's architecture decision).
-
-Intern 2 (Node/Express + MongoDB) owns job creation and initial status
-("pending"). This module is what Intern 3's worker uses to update status
-to "running"/"completed"/"failed" and to write final results, per the
-flow he described:
-
-    1. Frontend -> Intern 2's API -> Mongo job doc created (status=pending)
-    2. Intern 2 pushes {jobId, scraperType, inputParams} JSON onto a Redis list
-    3. Intern 3's worker BRPOPs it, sets status=running
-    4. Intern 3's worker scrapes, writes to Results collection,
-       sets status=completed/failed
-
-ASSUMPTIONS (flagged for confirmation with Intern 2 -- not yet confirmed):
+ASSUMPTIONS :
 - Database name: "sdip"
 - Jobs collection: "jobs", keyed by a "jobId" field (string, not Mongo's
   own _id) so both sides can reference the same id without translating
   ObjectId <-> string.
 - Results collection: "results", one document per completed job,
   referencing the same "jobId".
-These are all defined as constants below -- if Intern 2's actual naming
-differs, this is the only file that needs to change.
 """
 
 from __future__ import annotations
@@ -52,9 +37,7 @@ def get_db():
 
 
 def set_job_status(job_id: str, status: str, extra: dict[str, Any] | None = None) -> None:
-    """Update a job's status in the Jobs collection. Intern 2's API/frontend
-    reads this to drive the dashboard's Pending/Running/Completed/Failed
-    view (Sec 2.4 of the source doc).
+    """Update a job's status in the Jobs collection. I
     """
     db = get_db()
     update = {"status": status, "updated_at": datetime.now(timezone.utc)}
@@ -70,7 +53,7 @@ def set_job_status(job_id: str, status: str, extra: dict[str, Any] | None = None
 
 def save_result(job_id: str, result_envelope: dict[str, Any]) -> None:
     """Write the scraper's standardized output envelope
-    (see shared/schema.py) into the Results collection.
+    into the Results collection.
     """
     db = get_db()
     doc = dict(result_envelope)

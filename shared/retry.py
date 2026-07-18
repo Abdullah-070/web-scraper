@@ -1,6 +1,5 @@
 """
-Shared retry decorator (foundation for FR-3.5, used starting Week 1 for
-network-level flakiness so scrapers don't fail on a single transient hiccup).
+Shared retry decorator .
 
 Retries only NetworkError by default -- BlockedOrCaptchaError,
 InvalidInputError, AuthenticationError, and RateLimitExceededError should
@@ -27,11 +26,7 @@ def async_retry(
     max_attempts: int = 3,
     retry_on: tuple = (NetworkError,),
 ):
-    """Decorator for async scraper methods. Retries on the given exception
-    types with jittered exponential backoff. Re-raises the last exception
-    if all attempts are exhausted.
-    """
-
+    
     def decorator(func: Callable):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):

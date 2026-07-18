@@ -1,10 +1,6 @@
 """
-Human-like interaction pacing (FR-1.10, NFR-1.2).
+Human-like interaction pacing .
 
-Week 1 scope is intentionally simple: randomized delays instead of fixed
-intervals, so scraping doesn't look like a bot hammering the target site at
-a constant rate. Full proxy rotation and CAPTCHA handling come in Week 3
-(FR-3.3 / FR-3.4) -- don't over-build this yet.
 """
 
 from __future__ import annotations

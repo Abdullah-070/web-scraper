@@ -1,10 +1,6 @@
 """
 Shared exception taxonomy for all SDIP scrapers.
 
-Every scraper must raise one of these (or a subclass) rather than letting
-raw library exceptions bubble up. This keeps the Failed Tasks view on the
-dashboard actually diagnostic (NFR-3.3): a Job Queue worker can catch these,
-map them to a clean `error_type`, and log something a human can act on.
 """
 
 

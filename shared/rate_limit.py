@@ -1,12 +1,6 @@
 """
-Configurable daily usage cap per connected account (FR-1.9).
+Configurable daily usage cap per connected account .
 
-Week 1 ships an in-memory + file-backed implementation so the framework and
-LinkedIn scraper are testable standalone. When this connects to the real
-backend (Postgres), swap `FileRateLimiter` for a DB-backed implementation
-that queries/updates a row in the `settings` or a dedicated `rate_limits`
-table -- the public interface (`check_and_increment`) should not need to
-change, which is the "minimal wiring" goal for this module.
 """
 
 from __future__ import annotations
@@ -31,14 +25,7 @@ class RateLimiter:
 
 
 class FileRateLimiter(RateLimiter):
-    """Simple JSON-file-backed rate limiter for local dev/testing.
-
-    Not meant for production/concurrent workers -- this is a Week 1
-    placeholder so the interface and daily-cap behavior can be built and
-    tested now. Swap for a DB-backed limiter when connecting to the real
-    backend (same public method signature).
-    """
-
+    
     def __init__(self, storage_path: str | None = None, daily_limit: int = 100):
         self.storage_path = Path(storage_path or "rate_limit_state.json")
         self.daily_limit = daily_limit

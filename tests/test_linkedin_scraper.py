@@ -1,10 +1,7 @@
 """
 Tests for the LinkedIn scraper.
 
-Per mentor decision, no personal/real LinkedIn account is ever used in
-testing. All tests here run against the saved HTML fixture
-(tests/fixtures/linkedin_search_sample.html) via the `fixture_html` param,
-which bypasses both the network call and the auth requirement.
+
 """
 
 from pathlib import Path
@@ -105,10 +102,7 @@ async def test_empty_results_page_returns_completed_with_zero_rows():
 
 @pytest.mark.asyncio
 async def test_missing_account_id_in_live_mode_is_rejected():
-    """A real (non-fixture) job with a session cookie but no account_id
-    must fail validation rather than silently sharing a rate-limit bucket
-    with other unrelated jobs (FR-1.9).
-    """
+    
     scraper = LinkedInScraper(job_id="test-job-6")
     params = {
         "keywords": "marketing director",
