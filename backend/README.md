@@ -26,6 +26,8 @@ Server runs on the port specified in `.env`.
 - Protected routes via middleware
 - Logout (clears auth cookie)
 - Forgot password flow with OTP verification via email
+- Job creation and tracking (create, list, status check)
+- Results retrieval per job
 
 ## API Endpoints
 

@@ -148,3 +148,119 @@ Protected. Admin only. Returns all users without passwords.
 - `401` - Unauthorized: depends on `authMiddleware`
 - `403` - Forbidden: depends on `roleMiddleware`
 - `500` - Server error: `{ "message": "Internal server error" }`
+
+## Jobs
+
+### POST /jobs
+Protected. User only. Creates a new scraping job for the logged-in user.
+
+**Body:**
+```json
+{
+  "scraperType": "string",
+  "inputParams": {}
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "message": "Job created successfully",
+  "job": {
+    "_id": "string",
+    "userId": "string",
+    "scraperType": "string",
+    "inputParams": {},
+    "status": "pending"
+  }
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+
+### GET /jobs
+Protected. User only. Returns all jobs created by the logged-in user.
+
+**Success Response (200):**
+```json
+{
+  "message": "User jobs fetched successfully",
+  "jobs": [
+    {
+      "_id": "string",
+      "userId": "string",
+      "scraperType": "string",
+      "inputParams": {},
+      "status": "pending"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `404` - No jobs found: `{ "message": "No jobs found for this user" }`
+
+### GET /jobs/:id
+Protected. User only. Returns a single job by ID if it belongs to the logged-in user.
+
+**Path Params:**
+```json
+{ "id": "string" }
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "Job fetched successfully",
+  "job": {
+    "_id": "string",
+    "userId": "string",
+    "scraperType": "string",
+    "inputParams": {},
+    "status": "pending"
+  }
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `403` - Not job owner: `{ "message": "You are not authorized to view this job" }`
+- `404` - Job not found: `{ "message": "Job not found" }`
+
+## Results
+
+### GET /results/:jobId
+Protected. User only. Returns all results for a job that belongs to the logged-in user.
+
+**Path Params:**
+```json
+{ "jobId": "string" }
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "Job results fetched successfully",
+  "results": [
+    {
+      "_id": "string",
+      "jobId": "string",
+      "userId": "string",
+      "scraperType": "string",
+      "data": {}
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `403` - Not job owner: `{ "message": "You are not authorized to view this job results" }`
+- `404` - Job not found: `{ "message": "Job not found" }`
+- `404` - No results found: `{ "message": "No results found for this job" }`

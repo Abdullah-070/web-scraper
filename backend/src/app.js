@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import jobRoutes from "./routes/jobRoutes.js";
+import resultRoutes from "./routes/resultRoutes.js";
 
 
 const app = express();
@@ -18,5 +20,7 @@ app.use(cors({
 
 app.use("/api/auth", authRoutes);
 app.use("/api", userRoutes);
+app.use("/api/jobs", jobRoutes);
+app.use("/api/results", resultRoutes);
 
 export default app;
