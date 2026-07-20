@@ -153,6 +153,7 @@ Protected. Admin only. Returns all users without passwords.
 
 ### POST /jobs
 Protected. User only. Creates a new scraping job for the logged-in user.
+After creation, the job payload is pushed to Redis queue `jobQueue` for background processing.
 
 **Body:**
 ```json

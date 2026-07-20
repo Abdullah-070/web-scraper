@@ -1,4 +1,5 @@
 import jobModel from '../../../database/models/Job.js';
+import redisClient from '../config/redis.js';
 export const createJobController = async (req, res) => {
     const {scraperType, inputParams} = req.body;
 
@@ -8,6 +9,12 @@ export const createJobController = async (req, res) => {
         inputParams,
         status: 'pending'
     })
+
+    redisClient.lpush('jobQueue', JSON.stringify({
+        jobId: newJob._id,
+        scraperType: newJob.scraperType,
+        inputParams: newJob.inputParams
+    }))
 
     res.status(201).json({
         message: 'Job created successfully',
