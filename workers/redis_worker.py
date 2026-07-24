@@ -1,19 +1,8 @@
 """
-Raw Redis queue worker
+Raw Redis queue worker (replaces the earlier Celery-based approach
 
-Flow :
-    1. Frontend -> API -> Mongo job doc created, status=pending
-    2. API pushes {jobId, scraperType, inputParams} as JSON onto a
-       Redis list
-    3. This worker BRPOPs that same list
-    4. On pickup: set status=running in Mongo
-    5. Run the scraper
-    6. Save result to Results collection, set status=completed/failed
-
-ASSUMPTION : the Redis list key
-name is "scrape_jobs" below. If his push side uses a different key, this
-is the only line that needs to change.
 """
+
 
 from __future__ import annotations
 
@@ -24,14 +13,18 @@ import os
 import signal
 
 import redis
+from dotenv import load_dotenv
 
-from shared.mongo_store import save_result, set_job_status
+from shared.exceptions import ScraperError
+from shared.mongo_store import save_results, set_job_status
+
+load_dotenv()  # reads .env in the project root -- this is where you set REDIS_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sdip.workers.redis_worker")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-QUEUE_KEY = os.environ.get("SCRAPE_QUEUE_KEY", "scrape_jobs")  # ASSUMPTION -- confirm with Intern 2
+QUEUE_KEY = os.environ.get("SCRAPE_QUEUE_KEY", "job_queue")  # CONFIRMED with Intern 2
 BRPOP_TIMEOUT_SECONDS = 5  # so the loop can check for shutdown periodically
 
 
@@ -51,7 +44,9 @@ def _get_scraper_registry():
 
 
 class RedisWorker:
-    
+    """Watches a Redis list for scrape jobs and runs them.
+
+    """
 
     def __init__(self, redis_url: str = REDIS_URL, queue_key: str = QUEUE_KEY):
         self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
@@ -86,7 +81,9 @@ class RedisWorker:
 
 
 async def process_job(payload: dict) -> dict:
-    
+    """Process a single job payload: {jobId, scraperType, inputParams}.
+
+    """
     job_id = payload.get("jobId")
     scraper_type = payload.get("scraperType")
     input_params = payload.get("inputParams", {})
@@ -96,7 +93,13 @@ async def process_job(payload: dict) -> dict:
         return {"status": "failed", "error": "malformed_payload"}
 
     logger.info("Picked up job %s (scraperType=%s)", job_id, scraper_type)
-    set_job_status(job_id, "running")
+
+    try:
+        set_job_status(job_id, "running")
+    except ScraperError as exc:
+        # e.g. jobId isn't a valid ObjectId -- can't proceed at all.
+        logger.error("Could not mark job %s as running: %s", job_id, exc)
+        return {"status": "failed", "errors": [exc.to_dict()]}
 
     registry = _get_scraper_registry()
     scraper_cls = registry.get(scraper_type)
@@ -121,7 +124,14 @@ async def process_job(payload: dict) -> dict:
         scraper = scraper_cls(job_id=job_id)
         result = await scraper.run(input_params)
 
-    save_result(job_id, result)
+    try:
+        # One document per scraped row, per Intern 2's confirmed schema --
+        # NOT one document for the whole job.
+        save_results(job_id, scraper_type, result.get("results", []))
+    except ScraperError as exc:
+        logger.error("Failed to save results for job %s: %s", job_id, exc)
+        result = {**result, "status": "failed", "errors": result.get("errors", []) + [exc.to_dict()]}
+
     set_job_status(job_id, result["status"])
 
     logger.info(
