@@ -1,20 +1,14 @@
 """
-Website scraper configuration (FR-2.2).
+Website scraper configuration.
 
 Input:  website_url
 Output: emails, phone_numbers, social_links, technologies_used
 
-Unlike LinkedIn/Google Maps, this scraper doesn't search anything -- it
-fetches one given URL directly and extracts contact info + tech signals
-from the page. Plain `requests` is sufficient for most sites (no JS
-rendering needed for basic contact scraping); Playwright is not used here
-to keep this scraper lightweight, per NFR-2.1's expectation that
-malformed/unreachable URLs are handled gracefully rather than needing a
-full browser stack.
 """
 
 from __future__ import annotations
 
+import os
 import re
 
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
@@ -49,4 +43,4 @@ TECH_SIGNATURES = {
     "Google Tag Manager": ["googletagmanager.com"],
 }
 
-REQUEST_TIMEOUT_SECONDS = 15
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("WEBSITE_SCRAPER_TIMEOUT_SECONDS", "15"))

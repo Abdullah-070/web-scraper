@@ -1,16 +1,14 @@
 """
-Google Maps scraper configuration (FR-2.1).
+Google Maps scraper configuration.
 
 Inputs:  business_type, city, country
 Outputs: business_name, phone, email, website, address, rating, reviews
 
-No auth needed -- Google Maps search results are public, unlike LinkedIn.
-No daily per-account rate limit applies here (there's no "connected
-account" concept for this scraper), but NFR-2.3 still requires reasonable
-delays between actions to avoid tripping basic bot detection.
 """
 
 from __future__ import annotations
+
+import os
 
 REQUIRED_INPUT_FIELDS = ["business_type", "city", "country"]
 
@@ -31,5 +29,6 @@ SELECTORS = {
 
 # How many times to scroll the results feed to load more listings before
 # stopping (bounds runtime -- Google Maps will keep loading more forever
-# otherwise). Configurable so it can be tuned without touching scrape logic.
-MAX_SCROLL_ITERATIONS = 6
+# otherwise). Externalized via env var so it can be tuned in deployment
+# without a code change.
+MAX_SCROLL_ITERATIONS = int(os.environ.get("GOOGLE_MAPS_MAX_SCROLL_ITERATIONS", "6"))
