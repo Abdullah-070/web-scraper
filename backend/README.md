@@ -26,6 +26,7 @@ Server runs on the port specified in `.env`.
 - Protected routes via middleware
 - Logout (clears auth cookie)
 - Forgot password flow with OTP verification via email
+- User management: admin can view all users and delete non-admin accounts
 - Job creation and tracking (create, list, status check)
 - Redis queue integration (jobs pushed to `job_queue` list on creation)
 - Results retrieval per job

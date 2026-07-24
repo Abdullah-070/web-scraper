@@ -294,3 +294,30 @@ Returns a file download with one of the following content types:
 - `403` - Not job owner: `{ "message": "You are not authorized to export this job result" }`
 - `404` - Job not found: `{ "message": "Job not found" }`
 - `400` - Invalid format: `{ "message": "Invalid format" }`
+
+## Delete User
+
+### DELETE /users/:id
+Protected. Admin only. Deletes a user by ID. Admin users cannot be deleted.
+
+**Path Params:**
+```json
+{ "id": "string" }
+```
+
+**Success Response (200):**
+```json
+{ "message": "User deleted successfully" }
+```
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `403` - Cannot delete admin user:
+```json
+{ "message": "Cannot delete admin user" }
+```
+- `404` - User not found:
+```json
+{ "message": "User not found" }
+```
