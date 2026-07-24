@@ -265,3 +265,32 @@ Protected. User only. Returns all results for a job that belongs to the logged-i
 - `403` - Not job owner: `{ "message": "You are not authorized to view this job results" }`
 - `404` - Job not found: `{ "message": "Job not found" }`
 - `404` - No results found: `{ "message": "No results found for this job" }`
+
+## Export
+
+### GET /export/:jobId
+Protected. User only. Exports the results for a job that belongs to the logged-in user.
+Supports downloading the data as CSV, Excel, or JSON.
+
+**Path Params:**
+```json
+{ "jobId": "string" }
+```
+
+**Query Params:**
+```json
+{ "format": "csv | excel | json" }
+```
+
+**Success Response (200):**
+Returns a file download with one of the following content types:
+- `text/csv` for `format=csv`
+- `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` for `format=excel`
+- `application/json` for `format=json`
+
+**Error Responses:**
+- `401` - Unauthorized: depends on `authMiddleware`
+- `403` - Forbidden: depends on `roleMiddleware`
+- `403` - Not job owner: `{ "message": "You are not authorized to export this job result" }`
+- `404` - Job not found: `{ "message": "Job not found" }`
+- `400` - Invalid format: `{ "message": "Invalid format" }`
