@@ -3,7 +3,6 @@ Raw Redis queue worker (replaces the earlier Celery-based approach
 
 """
 
-
 from __future__ import annotations
 
 import asyncio
@@ -32,12 +31,14 @@ def _get_scraper_registry():
     # Imported lazily so this module can be imported (e.g. for testing)
     # without requiring every scraper's dependencies (Playwright, etc.)
     # to be installed.
+    from scrapers.google_maps.scraper import GoogleMapsScraper
     from scrapers.linkedin.scraper import LinkedInScraper
+    from scrapers.website.scraper import WebsiteScraper
 
     return {
         "linkedin": LinkedInScraper,
-        # "google_maps": GoogleMapsScraper,   # Week 2
-        # "website": WebsiteScraper,           # Week 2
+        "google_maps": GoogleMapsScraper,  # Week 2
+        "website": WebsiteScraper,  # Week 2
         # "facebook": FacebookScraper,          # Week 3
         # "instagram": InstagramScraper,        # Week 3
     }
@@ -82,7 +83,6 @@ class RedisWorker:
 
 async def process_job(payload: dict) -> dict:
     """Process a single job payload: {jobId, scraperType, inputParams}.
-
     """
     job_id = payload.get("jobId")
     scraper_type = payload.get("scraperType")
