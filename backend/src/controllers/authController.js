@@ -1,189 +1,113 @@
-import { hashPassword, comparePassword } from "../utils/hashPassword.js";
-import { generateToken } from "../utils/generateToken.js";
-import userModel from "../../../database/models/User.js";
-import { sendEmail } from "../utils/sendEmail.js";
-import { generateOTP } from "../utils/generateOTP.js";
-import { otpEmailTemplate } from "../templates/otpEmailTemplate.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
+import * as authService from "../services/authService.js";
 
 export const registerController = async (req, res) => {
-  const { name, email, password } = req.body;
+  try {
+    const result = await authService.registerUser(req.body);
 
-  if (!name || !email || !password) {
-    return errorResponse(res, 400, "Please provide all required fields");
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
+    }
+
+    return successResponse(res, result.statusCode, result.message, result.data);
+  } catch (error) {
+    console.error("Error in registerController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  const existingUser = await userModel.findOne({ email });
-  if (existingUser) {
-    return errorResponse(res, 400, "User already exists with this email");
-  }
-
-  const hashedPassword = await hashPassword(password);
-
-  const newUser = await userModel.create({
-    name,
-    email,
-    password: hashedPassword,
-    role: "user", // Default role is 'user' if not provided
-  });
-
-  return successResponse(res, 201, "User registered successfully", {
-    id: newUser._id,
-    name: newUser.name,
-    email: newUser.email,
-    role: newUser.role,
-  });
 };
 
 export const loginController = async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const result = await authService.loginUser(req.body);
 
-  if (!email || !password) {
-    return errorResponse(res, 400, "Please provide both email and password");
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
+    }
+
+    res.cookie("token", result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    return successResponse(res, result.statusCode, result.message, result.data);
+  } catch (error) {
+    console.error("Error in loginController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  const user = await userModel.findOne({ email });
-
-  if (!user) {
-    return errorResponse(res, 400, "Invalid credentials");
-  }
-
-  const isPasswordValid = await comparePassword(password, user.password);
-
-  if (!isPasswordValid) {
-    return errorResponse(res, 400, "Invalid credentials");
-  }
-
-  const token = generateToken(user._id, user.role);
-
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-
-  return successResponse(res, 200, "Login successful", {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  });
 };
 
 export const logoutController = (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
-  return successResponse(res, 200, "Logout successful");
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    return successResponse(res, 200, "Logout successful");
+  } catch (error) {
+    console.error("Error in logoutController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
+  }
 };
 
 export const getMe = async (req, res) => {
-  const user = await userModel.findById(req.user.userId).select("-password");
+  try {
+    const result = await authService.getMeUser(req.user.userId);
 
-  if (!user) {
-    return errorResponse(res, 404, "User not found");
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
+    }
+
+    return successResponse(res, result.statusCode, result.message, result.data);
+  } catch (error) {
+    console.error("Error in getMe:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  return successResponse(res, 200, "User fetched successfully", user);
 };
 
 export const forgotPasswordController = async (req, res) => {
-  const { email } = req.body;
+  try {
+    const result = await authService.forgotPasswordUser(req.body);
 
-  const user = await userModel.findOne({ email });
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
+    }
 
-  if (!user) {
-    return errorResponse(res, 404, "User not found");
+    return successResponse(res, result.statusCode, result.message);
+  } catch (error) {
+    console.error("Error in forgotPasswordController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  const otp = generateOTP();
-
-  user.resetOTP = otp;
-  user.resetOTPExpiry = Date.now() + 5 * 60 * 1000; // OTP valid for 5 minutes
-  user.resetOTPAttempts = 0; // Reset attempts on new OTP generation
-
-  await user.save();
-
-  const htmlContent = otpEmailTemplate(otp);
-
-  await sendEmail(user.email, "Your SDIP Password Reset OTP", htmlContent);
-
-  return successResponse(res, 200, "OTP sent to email");
 };
 
 export const verifyOtpController = async (req, res) => {
-  const { email, otp } = req.body;
+  try {
+    const result = await authService.verifyOtpUser(req.body);
 
-  const user = await userModel.findOne({ email });
-
-  if (!user) {
-    return errorResponse(res, 404, "User not found");
-  }
-
-  if (user.resetOTP === null) {
-    return errorResponse(res, 400, "No OTP found, please request a new one.");
-  }
-
-  if (user.resetOTPExpiry < Date.now()) {
-    user.resetOTP = null;
-    user.resetOTPExpiry = null;
-    user.resetOTPAttempts = 0;
-    await user.save();
-    return errorResponse(res, 400, "OTP has expired");
-  }
-
-  if (user.resetOTP !== otp) {
-    user.resetOTPAttempts += 1;
-    if (user.resetOTPAttempts >= 3) {
-      user.resetOTP = null;
-      user.resetOTPExpiry = null;
-      user.resetOTPAttempts = 0;
-      await user.save();
-      return errorResponse(
-        res,
-        400,
-        "Maximum OTP attempts exceeded. Please request a new OTP.",
-      );
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
     }
 
-    await user.save();
-    return errorResponse(res, 400, "Invalid OTP");
+    return successResponse(res, result.statusCode, result.message);
+  } catch (error) {
+    console.error("Error in verifyOtpController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  user.otpVerified = true;
-  await user.save();
-
-  return successResponse(res, 200, "OTP verified successfully");
 };
 
 export const resetPasswordController = async (req, res) => {
-  const { email, newPassword } = req.body;
+  try {
+    const result = await authService.resetPasswordUser(req.body);
 
-  const user = await userModel.findOne({ email });
+    if (result.error) {
+      return errorResponse(res, result.statusCode, result.message);
+    }
 
-  if (!user) {
-    return errorResponse(res, 404, "User not found");
+    return successResponse(res, result.statusCode, result.message);
+  } catch (error) {
+    console.error("Error in resetPasswordController:", error);
+    return errorResponse(res, 500, "Internal Server Error");
   }
-
-  if (!user.otpVerified) {
-    return errorResponse(
-      res,
-      400,
-      "OTP not verified. Please verify OTP before resetting password.",
-    );
-  }
-
-  const hashedPassword = await hashPassword(newPassword);
-  user.password = hashedPassword;
-  user.resetOTP = null;
-  user.resetOTPExpiry = null;
-  user.resetOTPAttempts = 0;
-  user.otpVerified = false;
-
-  await user.save();
-
-  return successResponse(res, 200, "Password reset successful");
 };

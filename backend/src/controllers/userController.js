@@ -1,28 +1,26 @@
-import userModel from '../../../database/models/User.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import * as userService from '../services/userService.js';
 
 export const getAllUsers = async (req, res) => {
-
-        const users = await userModel.find({}, '-password'); // Exclude password field
-        return successResponse(res, 200, 'Users fetched successfully', users);
-    
+    try {
+        const result = await userService.getAllUsersService();
+        if (result.error) {
+            return errorResponse(res, result.statusCode, result.message);
+        }
+        return successResponse(res, result.statusCode, result.message, result.data);
+    } catch (error) {
+        return errorResponse(res, 500, "Internal Server Error");
+    }
 }
 
 export const deleteUserController = async (req, res) => {
-    const userId = req.params.id;
-
-    const user = await userModel.findById(userId);
-
-    if (!user) {
-        return errorResponse(res, 404, 'User not found');
+    try {
+        const result = await userService.deleteUserService(req.params.id);
+        if (result.error) {
+            return errorResponse(res, result.statusCode, result.message);
+        }
+        return successResponse(res, result.statusCode, result.message);
+    } catch (error) {
+        return errorResponse(res, 500, "Internal Server Error");
     }
-
-    if(user.role === 'admin') {
-        return errorResponse(res, 403, 'Cannot delete admin user');
-    }
-
-    await userModel.findByIdAndDelete(userId);
-
-    return successResponse(res, 200, 'User deleted successfully');
-
 }
