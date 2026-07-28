@@ -1,17 +1,22 @@
 """
-Auth model:
+LinkedIn scraper configuration and input contract.
+
+Auth model :
 - No LinkedIn partner API, no third-party impersonation library.
-- This scraper NEVER uses a  developer/personal account for testing
+- This scraper NEVER uses a developer/personal account for testing 
 - This scraper does not store credentials
 """
 
 from __future__ import annotations
 
+import os
+
 REQUIRED_INPUT_FIELDS = ["keywords", "location", "industry", "company_size"]
 
-# Daily cap per connected account, per FR-1.9. Kept low and configurable --
-# tune based on real-world ban-risk observations once live.
-DEFAULT_DAILY_LIMIT = 50
+# Daily cap per connected account (FR-1.9). Externalized via env var so it
+# can be tuned in deployment without a code change/redeploy -- only the
+# fallback default (50) lives in code.
+DEFAULT_DAILY_LIMIT = int(os.environ.get("LINKEDIN_DAILY_LIMIT", "50"))
 
 LINKEDIN_SEARCH_URL = "https://www.linkedin.com/search/results/people/"
 
