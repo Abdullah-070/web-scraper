@@ -1,26 +1,16 @@
-import resultModel from '../../../database/models/Result.js';
-import jobModel from '../../../database/models/Job.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import * as resultService from '../services/resultService.js';
+import logger from '../config/logger.js';
+
 export const getResultsByJobId = async (req, res) => {
-    const jobId = req.params.jobId;
-
-    const job = await jobModel.findById(jobId);
-
-    if(!job) {
-        return res.status(404).json({ message: 'Job not found' });
+    try {
+        const result = await resultService.getResultsByJobIdService(req.params.jobId, req.user.userId);
+        if (result.error) {
+            return errorResponse(res, result.statusCode, result.message);
+        }
+        return successResponse(res, result.statusCode, result.message, result.data);
+    } catch (error) {
+        logger.error("Error in getResultsByJobId", { error: error.message });
+        return errorResponse(res, 500, "Internal Server Error");
     }
-
-    if(job.userId.toString() !== req.user.userId) {
-        return res.status(403).json({ message: 'You are not authorized to view this job results' });
-    }
-
-    const results = await resultModel.find({ jobId: jobId });
-
-    if(!results || results.length === 0) {
-        return res.status(404).json({ message: 'No results found for this job' });
-    }
-
-    res.status(200).json({
-        message: 'Job results fetched successfully',
-        results: results
-    })
 }

@@ -2,6 +2,7 @@ import connectDB from "./connection.js";
 import User from "./models/User.js";
 import { hashPassword } from "../backend/src/utils/hashPassword.js";
 import dotenv from "dotenv";
+import logger from "../backend/src/config/logger.js";
 
 dotenv.config({
     path: "../backend/.env"
@@ -28,7 +29,7 @@ const seedAdmin = async () => {
     console.log("Admin created successfully:", admin.email);
     process.exit(0);
   } catch (error) {
-    console.error("Seeding failed:", error.message);
+    logger.error("Seeding failed", { error: error.message });
     process.exit(1);
   }
 };
