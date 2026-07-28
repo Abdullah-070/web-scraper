@@ -1,5 +1,6 @@
 import jobModel from "../../../database/models/Job.js";
 import redisClient from "../config/redis.js";
+import logger from "../config/logger.js";
 
 export const createJobService = async (data, userId) => {
   const { scraperType, inputParams } = data;
@@ -20,6 +21,7 @@ export const createJobService = async (data, userId) => {
     })
   );
 
+  logger.info("Job created and queued", { jobId: newJob._id, scraperType: newJob.scraperType, userId });
   return { error: false, statusCode: 201, message: "Job created successfully", data: newJob };
 };
 

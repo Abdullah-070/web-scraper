@@ -1,5 +1,6 @@
 import { errorResponse } from "../utils/apiResponse.js";
 import * as exportService from "../services/exportService.js";
+import logger from "../config/logger.js";
 
 export const exportResultController = async (req, res) => {
   try {
@@ -25,6 +26,7 @@ export const exportResultController = async (req, res) => {
       res.send(result.data);
     }
   } catch (error) {
+    logger.error("Error in exportResultController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };

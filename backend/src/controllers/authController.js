@@ -1,5 +1,6 @@
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import * as authService from "../services/authService.js";
+import logger from "../config/logger.js";
 
 export const registerController = async (req, res) => {
   try {
@@ -11,7 +12,7 @@ export const registerController = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message, result.data);
   } catch (error) {
-    console.error("Error in registerController:", error);
+    logger.error("Error in registerController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -33,7 +34,7 @@ export const loginController = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message, result.data);
   } catch (error) {
-    console.error("Error in loginController:", error);
+    logger.error("Error in loginController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -45,9 +46,10 @@ export const logoutController = (req, res) => {
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
+    logger.info("User logged out successfully");
     return successResponse(res, 200, "Logout successful");
   } catch (error) {
-    console.error("Error in logoutController:", error);
+    logger.error("Error in logoutController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -62,7 +64,7 @@ export const getMe = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message, result.data);
   } catch (error) {
-    console.error("Error in getMe:", error);
+    logger.error("Error in getMe", { error: error.message, userId: req.user?.userId });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -77,7 +79,7 @@ export const forgotPasswordController = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message);
   } catch (error) {
-    console.error("Error in forgotPasswordController:", error);
+    logger.error("Error in forgotPasswordController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -92,7 +94,7 @@ export const verifyOtpController = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message);
   } catch (error) {
-    console.error("Error in verifyOtpController:", error);
+    logger.error("Error in verifyOtpController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };
@@ -107,7 +109,7 @@ export const resetPasswordController = async (req, res) => {
 
     return successResponse(res, result.statusCode, result.message);
   } catch (error) {
-    console.error("Error in resetPasswordController:", error);
+    logger.error("Error in resetPasswordController", { error: error.message });
     return errorResponse(res, 500, "Internal Server Error");
   }
 };

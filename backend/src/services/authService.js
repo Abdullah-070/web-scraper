@@ -4,6 +4,7 @@ import userModel from "../../../database/models/User.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import { generateOTP } from "../utils/generateOTP.js";
 import { otpEmailTemplate } from "../templates/otpEmailTemplate.js";
+import logger from "../config/logger.js";
 
 export const registerUser = async (data) => {
   const { name, email, password } = data;
@@ -25,6 +26,7 @@ export const registerUser = async (data) => {
     role: "user", // Default role is 'user' if not provided
   });
 
+  logger.info("New user registered", { userId: newUser._id, email: newUser.email });
   return {
     error: false,
     statusCode: 201,
