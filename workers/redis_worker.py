@@ -1,6 +1,5 @@
 """
 Raw Redis queue worker (replaces the earlier Celery-based approach
-
 """
 
 from __future__ import annotations
@@ -28,10 +27,10 @@ BRPOP_TIMEOUT_SECONDS = 5  # so the loop can check for shutdown periodically
 
 
 def _get_scraper_registry():
-    # Imported lazily so this module can be imported (e.g. for testing)
-    # without requiring every scraper's dependencies (Playwright, etc.)
-    # to be installed.
+    
+    from scrapers.facebook.scraper import FacebookScraper
     from scrapers.google_maps.scraper import GoogleMapsScraper
+    from scrapers.instagram.scraper import InstagramScraper
     from scrapers.linkedin.scraper import LinkedInScraper
     from scrapers.website.scraper import WebsiteScraper
 
@@ -39,8 +38,8 @@ def _get_scraper_registry():
         "linkedin": LinkedInScraper,
         "google_maps": GoogleMapsScraper,  # Week 2
         "website": WebsiteScraper,  # Week 2
-        # "facebook": FacebookScraper,          # Week 3
-        # "instagram": InstagramScraper,        # Week 3
+        "facebook": FacebookScraper,  # Week 3
+        "instagram": InstagramScraper,  # Week 3
     }
 
 
@@ -83,6 +82,7 @@ class RedisWorker:
 
 async def process_job(payload: dict) -> dict:
     """Process a single job payload: {jobId, scraperType, inputParams}.
+
     """
     job_id = payload.get("jobId")
     scraper_type = payload.get("scraperType")
@@ -125,8 +125,7 @@ async def process_job(payload: dict) -> dict:
         result = await scraper.run(input_params)
 
     try:
-        # One document per scraped row, per Intern 2's confirmed schema --
-        # NOT one document for the whole job.
+        
         save_results(job_id, scraper_type, result.get("results", []))
     except ScraperError as exc:
         logger.error("Failed to save results for job %s: %s", job_id, exc)

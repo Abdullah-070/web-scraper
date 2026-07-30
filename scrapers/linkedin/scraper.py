@@ -1,6 +1,9 @@
 """
+LinkedIn Scraper
+
 Inputs:  keywords, location, industry, company_size
 Outputs: name, company, position, profile_url, email (if available), website
+
 """
 
 from __future__ import annotations
@@ -17,14 +20,15 @@ from scrapers.linkedin.config import (
     REQUIRED_INPUT_FIELDS,
     SELECTORS,
 )
+from shared.captcha_detection import check_for_block_or_captcha
 from shared.exceptions import (
     AuthenticationError,
-    BlockedOrCaptchaError,
     InvalidInputError,
     NetworkError,
     ParsingError,
 )
 from shared.human_behavior import human_delay
+from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.rate_limit import FileRateLimiter, RateLimiter
 from shared.retry import async_retry
 from shared.schema import empty_row
@@ -40,11 +44,13 @@ class LinkedInScraper(BaseScraper):
         job_id: str | None = None,
         rate_limiter: RateLimiter | None = None,
         daily_limit: int = DEFAULT_DAILY_LIMIT,
+        proxy_pool: ProxyPool | None = None,
     ):
         super().__init__(job_id=job_id)
-        # Dependency-injected so the backend team can swap in a DB-backed
-        # limiter later without touching this scraper (minimal wiring goal).
+        
         self.rate_limiter = rate_limiter or FileRateLimiter(daily_limit=daily_limit)
+        
+        self.proxy_pool = proxy_pool or default_proxy_pool
 
     # ------------------------------------------------------------------ #
     # Validation
@@ -59,16 +65,13 @@ class LinkedInScraper(BaseScraper):
 
         auth = params.get("auth") or {}
         if not auth.get("session_cookie") and not params.get("fixture_html"):
-            # fixture_html bypasses auth entirely for offline/dev testing
             raise AuthenticationError(
                 "No LinkedIn session provided. The end user must connect "
                 "their LinkedIn account (session cookie) before this "
                 "scraper can run.",
             )
 
-        # account_id is required whenever we're not in fixture/test mode --
-        # silently defaulting it would let unrelated jobs share one rate
-        # bucket, defeating the per-account daily cap (FR-1.9).
+        
         if not auth.get("account_id") and not params.get("fixture_html"):
             raise InvalidInputError(
                 "Missing auth.account_id. This is required to enforce the "
@@ -89,8 +92,7 @@ class LinkedInScraper(BaseScraper):
     # Scrape
     # ------------------------------------------------------------------ #
     async def scrape(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        # Enforce daily cap per connected account (FR-1.9) before doing
-        # any actual work.
+
         self.rate_limiter.check_and_increment(
             account_id=params["account_id"], scraper_type=self.scraper_type
         )
@@ -108,9 +110,6 @@ class LinkedInScraper(BaseScraper):
         """Launch Playwright, authenticate with the user's session cookie,
         run the search, and return the rendered page HTML.
 
-        Kept separate from `scrape()` so it can be retried independently
-        and so `scrape()`'s control flow (rate limit -> fetch -> parse)
-        stays easy to read.
         """
         try:
             from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -126,9 +125,14 @@ class LinkedInScraper(BaseScraper):
             f"&location={params['location']}"
         )
 
+        proxy = self.proxy_pool.get_proxy()
+        launch_kwargs = {"headless": True}
+        if proxy:
+            launch_kwargs["proxy"] = {"server": proxy}
+
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(**launch_kwargs)
                 context = await browser.new_context()
                 await context.add_cookies(
                     [
@@ -148,28 +152,29 @@ class LinkedInScraper(BaseScraper):
 
                 content = await page.content()
                 await browser.close()
+                if proxy:
+                    self.proxy_pool.report_success(proxy)
                 return content
 
         except PlaywrightTimeoutError as exc:
+            if proxy:
+                self.proxy_pool.report_failure(proxy)
             raise NetworkError(f"Timed out loading LinkedIn search: {exc}") from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  
+            if proxy:
+                self.proxy_pool.report_failure(proxy)
             raise NetworkError(f"Failed to load LinkedIn search page: {exc}") from exc
 
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
 
-        if soup.select_one(SELECTORS["captcha_indicator"]):
-            raise BlockedOrCaptchaError(
-                "LinkedIn presented a CAPTCHA/challenge page. Full CAPTCHA "
-                "handling is Week 3 scope -- failing this job cleanly for now."
-            )
+        check_for_block_or_captcha(
+            soup, site_selectors=[SELECTORS["captcha_indicator"]]
+        )
 
         cards = soup.select(SELECTORS["result_card"])
         if not cards:
-            # Not necessarily an error -- could just be zero results. We only
-            # treat total absence of the expected page structure as a
-            # ParsingError if there's also no obvious "no results" signal.
-            # For Week 1, keep this simple and just return an empty list.
+
             logger.info("No result cards found for query -- returning empty results.")
             return []
 
@@ -186,10 +191,8 @@ class LinkedInScraper(BaseScraper):
                 row["position"] = position_el.get_text(strip=True) if position_el else None
                 row["company"] = company_el.get_text(strip=True) if company_el else None
                 row["profile_url"] = link_el.get("href") if link_el else None
-                # email/website are not available from search results directly;
-                # left as None here. A future enhancement could visit each
-                # profile individually, at the cost of far more requests/risk.
-            except Exception as exc:  # noqa: BLE001
+ 
+            except Exception as exc: 
                 raise ParsingError(
                     f"Failed to parse a LinkedIn result card: {exc}"
                 ) from exc

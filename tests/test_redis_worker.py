@@ -43,14 +43,12 @@ def _linkedin_payload(job_id: str, fixture_html: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_process_job_inserts_one_result_document_per_row(mock_mongo):
-    """2 LinkedIn results in the fixture 
+    """2 LinkedIn results in the fixture -> 2 separate Results documents,
+    each shaped 
     """
     html = FIXTURE_PATH.read_text()
     db = mongo_store.get_db()
 
-    # Seed a job doc as Intern 2's API would, keyed by real ObjectId _id,
-    # including userId (also an ObjectId) -- the Redis payload itself
-    # doesn't carry userId, so the worker looks it up from this doc.
     user_id = ObjectId()
     job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
         {"userId": user_id, "status": "pending"}
@@ -137,3 +135,134 @@ async def test_process_job_missing_job_doc_saves_results_with_null_user_id(mock_
     )
     assert len(result_docs) == 2
     assert all(doc["userId"] is None for doc in result_docs)
+
+
+@pytest.mark.asyncio
+async def test_process_job_google_maps_registered_and_wired(mock_mongo):
+   
+    gmaps_fixture = (
+        Path(__file__).parent / "fixtures" / "google_maps_sample.html"
+    ).read_text()
+    db = mongo_store.get_db()
+    job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
+        {"userId": ObjectId(), "status": "pending"}
+    ).inserted_id
+    job_id = str(job_id_obj)
+
+    payload = {
+        "jobId": job_id,
+        "scraperType": "google_maps",
+        "inputParams": {
+            "business_type": "dentist",
+            "city": "Islamabad",
+            "country": "Pakistan",
+            "fixture_html": gmaps_fixture,
+        },
+    }
+
+    result = await process_job(payload)
+
+    assert result["status"] == "completed"
+    assert result["result_count"] == 2
+
+    result_docs = list(db[mongo_store.RESULTS_COLLECTION].find({"jobId": job_id_obj}))
+    assert len(result_docs) == 2
+    assert all(doc["scraperType"] == "google_maps" for doc in result_docs)
+
+
+@pytest.mark.asyncio
+async def test_process_job_website_registered_and_wired(mock_mongo, monkeypatch):
+    
+    import requests
+    from unittest.mock import Mock
+
+    mock_resp = Mock()
+    mock_resp.text = "<html><body>contact us: hi@example.com</body></html>"
+    mock_resp.status_code = 200
+    mock_resp.headers = {}
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
+
+    db = mongo_store.get_db()
+    job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
+        {"userId": ObjectId(), "status": "pending"}
+    ).inserted_id
+    job_id = str(job_id_obj)
+
+    payload = {
+        "jobId": job_id,
+        "scraperType": "website",
+        "inputParams": {"website_url": "example.com"},
+    }
+
+    result = await process_job(payload)
+
+    assert result["status"] == "completed"
+    assert result["result_count"] == 1
+
+    result_docs = list(db[mongo_store.RESULTS_COLLECTION].find({"jobId": job_id_obj}))
+    assert len(result_docs) == 1
+    assert result_docs[0]["data"]["emails"] == ["hi@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_process_job_facebook_registered_and_wired(mock_mongo):
+    
+    fb_fixture = (
+        Path(__file__).parent / "fixtures" / "facebook_page_sample.html"
+    ).read_text()
+    db = mongo_store.get_db()
+    job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
+        {"userId": ObjectId(), "status": "pending"}
+    ).inserted_id
+    job_id = str(job_id_obj)
+
+    payload = {
+        "jobId": job_id,
+        "scraperType": "facebook",
+        "inputParams": {
+            "business_page": "brightsmiledental",
+            "fixture_html": fb_fixture,
+        },
+    }
+
+    result = await process_job(payload)
+
+    assert result["status"] == "completed"
+    assert result["result_count"] == 1
+
+    result_docs = list(db[mongo_store.RESULTS_COLLECTION].find({"jobId": job_id_obj}))
+    assert len(result_docs) == 1
+    assert result_docs[0]["scraperType"] == "facebook"
+    assert result_docs[0]["data"]["phone"] == "+925112345678"
+
+
+@pytest.mark.asyncio
+async def test_process_job_instagram_registered_and_wired(mock_mongo):
+    
+    ig_fixture = (
+        Path(__file__).parent / "fixtures" / "instagram_profile_sample.html"
+    ).read_text()
+    db = mongo_store.get_db()
+    job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
+        {"userId": ObjectId(), "status": "pending"}
+    ).inserted_id
+    job_id = str(job_id_obj)
+
+    payload = {
+        "jobId": job_id,
+        "scraperType": "instagram",
+        "inputParams": {
+            "username": "brightsmiledental",
+            "fixture_html": ig_fixture,
+        },
+    }
+
+    result = await process_job(payload)
+
+    assert result["status"] == "completed"
+    assert result["result_count"] == 1
+
+    result_docs = list(db[mongo_store.RESULTS_COLLECTION].find({"jobId": job_id_obj}))
+    assert len(result_docs) == 1
+    assert result_docs[0]["scraperType"] == "instagram"
+    assert result_docs[0]["data"]["followers"] == 1234

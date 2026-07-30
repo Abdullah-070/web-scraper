@@ -1,5 +1,5 @@
 """
-Website scraper configuration.
+Website scraper configuration (FR-2.2).
 
 Input:  website_url
 Output: emails, phone_numbers, social_links, technologies_used
@@ -9,15 +9,8 @@ Output: emails, phone_numbers, social_links, technologies_used
 from __future__ import annotations
 
 import os
-import re
 
-EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-
-# Deliberately conservative: matches common phone formats without being so
-# loose it picks up unrelated numbers (e.g. dates, prices) from the page.
-PHONE_REGEX = re.compile(
-    r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}"
-)
+from shared.text_patterns import EMAIL_REGEX, PHONE_REGEX  # noqa: F401
 
 SOCIAL_DOMAINS = [
     "facebook.com",
@@ -29,10 +22,6 @@ SOCIAL_DOMAINS = [
     "tiktok.com",
 ]
 
-# Lightweight technology fingerprints based on markup/response signals.
-# Not exhaustive -- a real "Technologies Used" detector (e.g. Wappalyzer)
-# is a much bigger undertaking; this is a reasonable Week 2 starting point
-# that can be swapped out later without changing the scraper's interface.
 TECH_SIGNATURES = {
     "WordPress": ["wp-content", "wp-includes"],
     "Shopify": ["cdn.shopify.com", "shopify"],
