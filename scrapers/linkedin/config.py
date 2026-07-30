@@ -13,9 +13,6 @@ import os
 
 REQUIRED_INPUT_FIELDS = ["keywords", "location", "industry", "company_size"]
 
-# Daily cap per connected account (FR-1.9). Externalized via env var so it
-# can be tuned in deployment without a code change/redeploy -- only the
-# fallback default (50) lives in code.
 DEFAULT_DAILY_LIMIT = int(os.environ.get("LINKEDIN_DAILY_LIMIT", "50"))
 
 LINKEDIN_SEARCH_URL = "https://www.linkedin.com/search/results/people/"

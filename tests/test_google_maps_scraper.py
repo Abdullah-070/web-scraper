@@ -89,3 +89,15 @@ async def test_empty_results_page_returns_completed_with_zero_rows():
     assert result["status"] == "completed"
     assert result["result_count"] == 0
     assert result["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_recaptcha_page_raises_blocked_error():
+    
+    scraper = GoogleMapsScraper(job_id="test-job-5")
+    captcha_html = '<html><body><div class="g-recaptcha"></div></body></html>'
+
+    result = await scraper.run(_valid_params(fixture_html=captcha_html))
+
+    assert result["status"] == "failed"
+    assert result["errors"][0]["error_type"] == "blocked_or_captcha"
