@@ -27,6 +27,7 @@ from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.retry import async_retry
 from shared.schema import empty_row
 from shared.text_patterns import EMAIL_REGEX
+from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.instagram")
 
@@ -39,7 +40,7 @@ class InstagramScraper(BaseScraper):
         self.proxy_pool = proxy_pool or default_proxy_pool
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        username = (params.get("username") or "").strip().lstrip("@")
+        username = require_str(params, "username").lstrip("@")
         if not username:
             raise InvalidInputError(
                 "Missing required field: username",

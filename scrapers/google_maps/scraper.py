@@ -17,15 +17,15 @@ from scrapers.base import BaseScraper
 from scrapers.google_maps.config import (
     GOOGLE_MAPS_SEARCH_URL,
     MAX_SCROLL_ITERATIONS,
-    REQUIRED_INPUT_FIELDS,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
-from shared.exceptions import InvalidInputError, NetworkError, ParsingError
+from shared.exceptions import NetworkError, ParsingError
 from shared.human_behavior import human_delay
 from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.retry import async_retry
 from shared.schema import empty_row
+from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.google_maps")
 
@@ -35,21 +35,15 @@ class GoogleMapsScraper(BaseScraper):
 
     def __init__(self, job_id: str | None = None, proxy_pool: ProxyPool | None = None):
         super().__init__(job_id=job_id)
-
+        # Week 3: shared proxy pool (FR-3.3), same pattern as LinkedIn/
+        # Facebook/Instagram -- opt-in, no-op if PROXY_LIST isn't configured.
         self.proxy_pool = proxy_pool or default_proxy_pool
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        missing = [f for f in REQUIRED_INPUT_FIELDS if not params.get(f)]
-        if missing:
-            raise InvalidInputError(
-                f"Missing required field(s): {', '.join(missing)}",
-                details={"missing_fields": missing},
-            )
-
         return {
-            "business_type": params["business_type"].strip(),
-            "city": params["city"].strip(),
-            "country": params["country"].strip(),
+            "business_type": require_str(params, "business_type"),
+            "city": require_str(params, "city"),
+            "country": require_str(params, "country"),
             "fixture_html": params.get("fixture_html"),
         }
 
@@ -89,6 +83,9 @@ class GoogleMapsScraper(BaseScraper):
                 await page.goto(url, timeout=30000)
                 await human_delay(2.0, 4.0)  # let the results panel render
 
+                # Google Maps loads more listings as the results feed is
+                # scrolled (NFR-2.2) -- scroll a bounded number of times
+                # rather than assuming everything loads up front.
                 feed_selector = SELECTORS["results_panel"]
                 for _ in range(MAX_SCROLL_ITERATIONS):
                     await page.evaluate(
@@ -117,6 +114,8 @@ class GoogleMapsScraper(BaseScraper):
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
 
+        # Week 3: shared detection utility, same as LinkedIn/Facebook/
+        # Instagram (NFR-3.1 -- one shared mechanism, not duplicated logic).
         check_for_block_or_captcha(
             soup, site_selectors=SELECTORS["captcha_indicators"]
         )
@@ -149,6 +148,8 @@ class GoogleMapsScraper(BaseScraper):
                     aria_label = rating_el.get("aria-label", "")
                     row["rating"], row["reviews"] = self._parse_rating_label(aria_label)
 
+                # email is not exposed directly by Google Maps listings --
+                # left as None; the Website Scraper module fills this gap.
             except Exception as exc:  # noqa: BLE001
                 raise ParsingError(
                     f"Failed to parse a Google Maps result card: {exc}"
