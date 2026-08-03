@@ -16,15 +16,15 @@ from bs4 import BeautifulSoup
 from scrapers.base import BaseScraper
 from scrapers.facebook.config import (
     FACEBOOK_BASE_URL,
-    REQUIRED_INPUT_FIELDS,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
-from shared.exceptions import InvalidInputError, NetworkError, ParsingError
+from shared.exceptions import NetworkError, ParsingError
 from shared.human_behavior import human_delay
 from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.retry import async_retry
 from shared.schema import empty_row
+from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.facebook")
 
@@ -37,15 +37,8 @@ class FacebookScraper(BaseScraper):
         self.proxy_pool = proxy_pool or default_proxy_pool
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        missing = [f for f in REQUIRED_INPUT_FIELDS if not params.get(f)]
-        if missing:
-            raise InvalidInputError(
-                f"Missing required field(s): {', '.join(missing)}",
-                details={"missing_fields": missing},
-            )
-
         return {
-            "business_page": params["business_page"].strip(),
+            "business_page": require_str(params, "business_page"),
             "fixture_html": params.get("fixture_html"),
         }
 

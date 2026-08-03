@@ -17,7 +17,6 @@ from scrapers.base import BaseScraper
 from scrapers.linkedin.config import (
     DEFAULT_DAILY_LIMIT,
     LINKEDIN_SEARCH_URL,
-    REQUIRED_INPUT_FIELDS,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
@@ -32,6 +31,7 @@ from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.rate_limit import FileRateLimiter, RateLimiter
 from shared.retry import async_retry
 from shared.schema import empty_row
+from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.linkedin")
 
@@ -47,31 +47,44 @@ class LinkedInScraper(BaseScraper):
         proxy_pool: ProxyPool | None = None,
     ):
         super().__init__(job_id=job_id)
-        
+        # Dependency-injected so the backend team can swap in a DB-backed
+        # limiter later without touching this scraper (minimal wiring goal).
         self.rate_limiter = rate_limiter or FileRateLimiter(daily_limit=daily_limit)
-        
+        # Week 3: shared proxy pool (FR-3.3) -- same pattern, injectable
+        # for testing, defaults to the shared module-level instance.
         self.proxy_pool = proxy_pool or default_proxy_pool
 
     # ------------------------------------------------------------------ #
     # Validation
     # ------------------------------------------------------------------ #
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        missing = [f for f in REQUIRED_INPUT_FIELDS if not params.get(f)]
-        if missing:
-            raise InvalidInputError(
-                f"Missing required field(s): {', '.join(missing)}",
-                details={"missing_fields": missing},
-            )
+        # Week 4 fix: require_str raises InvalidInputError (not a raw
+        # AttributeError) if a field is missing OR the wrong type --
+        # integration testing (FR-4.1) found that a list/int here used
+        # to crash the worker via an unguarded .strip() call (NFR-4.1).
+        keywords = require_str(params, "keywords")
+        location = require_str(params, "location")
+        industry = require_str(params, "industry")
+        company_size = require_str(params, "company_size")
 
         auth = params.get("auth") or {}
+        if not isinstance(auth, dict):
+            raise InvalidInputError(
+                "Field 'auth' must be an object, got "
+                f"{type(auth).__name__}."
+            )
+
         if not auth.get("session_cookie") and not params.get("fixture_html"):
+            # fixture_html bypasses auth entirely for offline/dev testing
             raise AuthenticationError(
                 "No LinkedIn session provided. The end user must connect "
                 "their LinkedIn account (session cookie) before this "
                 "scraper can run.",
             )
 
-        
+        # account_id is required whenever we're not in fixture/test mode --
+        # silently defaulting it would let unrelated jobs share one rate
+        # bucket, defeating the per-account daily cap (FR-1.9).
         if not auth.get("account_id") and not params.get("fixture_html"):
             raise InvalidInputError(
                 "Missing auth.account_id. This is required to enforce the "
@@ -79,10 +92,10 @@ class LinkedInScraper(BaseScraper):
             )
 
         return {
-            "keywords": params["keywords"].strip(),
-            "location": params["location"].strip(),
-            "industry": params["industry"].strip(),
-            "company_size": params["company_size"].strip(),
+            "keywords": keywords,
+            "location": location,
+            "industry": industry,
+            "company_size": company_size,
             "auth": auth,
             "account_id": auth.get("account_id") or "fixture_test_account",
             "fixture_html": params.get("fixture_html"),
@@ -92,7 +105,8 @@ class LinkedInScraper(BaseScraper):
     # Scrape
     # ------------------------------------------------------------------ #
     async def scrape(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-
+        # Enforce daily cap per connected account (FR-1.9) before doing
+        # any actual work.
         self.rate_limiter.check_and_increment(
             account_id=params["account_id"], scraper_type=self.scraper_type
         )
@@ -110,6 +124,9 @@ class LinkedInScraper(BaseScraper):
         """Launch Playwright, authenticate with the user's session cookie,
         run the search, and return the rendered page HTML.
 
+        Kept separate from `scrape()` so it can be retried independently
+        and so `scrape()`'s control flow (rate limit -> fetch -> parse)
+        stays easy to read.
         """
         try:
             from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -125,6 +142,10 @@ class LinkedInScraper(BaseScraper):
             f"&location={params['location']}"
         )
 
+        # Week 3: route through the shared proxy pool if any proxies are
+        # configured (PROXY_LIST env var). If none are configured,
+        # `proxy` is None and Playwright just launches without one --
+        # proxies are opt-in, not required.
         proxy = self.proxy_pool.get_proxy()
         launch_kwargs = {"headless": True}
         if proxy:
@@ -160,7 +181,7 @@ class LinkedInScraper(BaseScraper):
             if proxy:
                 self.proxy_pool.report_failure(proxy)
             raise NetworkError(f"Timed out loading LinkedIn search: {exc}") from exc
-        except Exception as exc:  
+        except Exception as exc:  # noqa: BLE001
             if proxy:
                 self.proxy_pool.report_failure(proxy)
             raise NetworkError(f"Failed to load LinkedIn search page: {exc}") from exc
@@ -168,13 +189,18 @@ class LinkedInScraper(BaseScraper):
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
 
+        # Week 3: shared detection utility instead of an inline check --
+        # avoids duplicating CAPTCHA-sniffing logic per scraper (NFR-3.1).
         check_for_block_or_captcha(
             soup, site_selectors=[SELECTORS["captcha_indicator"]]
         )
 
         cards = soup.select(SELECTORS["result_card"])
         if not cards:
-
+            # Not necessarily an error -- could just be zero results. We only
+            # treat total absence of the expected page structure as a
+            # ParsingError if there's also no obvious "no results" signal.
+            # For Week 1, keep this simple and just return an empty list.
             logger.info("No result cards found for query -- returning empty results.")
             return []
 
@@ -191,8 +217,10 @@ class LinkedInScraper(BaseScraper):
                 row["position"] = position_el.get_text(strip=True) if position_el else None
                 row["company"] = company_el.get_text(strip=True) if company_el else None
                 row["profile_url"] = link_el.get("href") if link_el else None
- 
-            except Exception as exc: 
+                # email/website are not available from search results directly;
+                # left as None here. A future enhancement could visit each
+                # profile individually, at the cost of far more requests/risk.
+            except Exception as exc:  # noqa: BLE001
                 raise ParsingError(
                     f"Failed to parse a LinkedIn result card: {exc}"
                 ) from exc

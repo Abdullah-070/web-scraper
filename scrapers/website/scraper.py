@@ -1,27 +1,9 @@
 """
-Website Scraper (FR-2.2).
+Website Scraper 
 
 Input:  website_url
 Output: emails, phone_numbers, social_links, technologies_used
 
-Week 2 scope:
-- Full BaseScraper compliance.
-- Uses plain `requests` (not Playwright) -- this scraper doesn't need JS
-  rendering for the vast majority of contact-info extraction, and staying
-  lightweight means it can run many more jobs per minute than the
-  browser-based scrapers.
-- Handles malformed/unreachable URLs gracefully (NFR-2.1): invalid URL
-  format -> InvalidInputError (caught before any request is attempted);
-  connection/timeout/DNS failures -> NetworkError (retryable);
-  non-2xx responses -> NetworkError as well, since a 404/500 is still a
-  "couldn't get the page" outcome, not a parsing problem.
-- Respects a short per-request delay (NFR-2.3) -- less relevant for a
-  single-URL fetch than for LinkedIn/Google Maps search scraping, but
-  kept for consistency and to avoid hammering a URL on retry.
-
-This scraper does NOT accept a `fixture_html` bypass the way LinkedIn and
-Google Maps do, since there's no live-network auth/ban risk here to avoid
-during testing -- instead, tests monkeypatch `requests.get` directly.
 """
 
 from __future__ import annotations
@@ -46,6 +28,7 @@ from shared.exceptions import InvalidInputError, NetworkError
 from shared.human_behavior import human_delay
 from shared.retry import async_retry
 from shared.schema import empty_row
+from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.website")
 
@@ -54,12 +37,9 @@ class WebsiteScraper(BaseScraper):
     scraper_type = "website"
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        url = (params.get("website_url") or "").strip()
-        if not url:
-            raise InvalidInputError(
-                "Missing required field: website_url",
-                details={"missing_fields": ["website_url"]},
-            )
+        # Week 4 fix: require_str rejects a wrong-typed value (e.g. an int)
+        # with InvalidInputError instead of crashing on .strip() (NFR-4.1).
+        url = require_str(params, "website_url")
 
         parsed = urlparse(url if "://" in url else f"https://{url}")
         # urlparse is lenient (e.g. "not a url at all" parses with a

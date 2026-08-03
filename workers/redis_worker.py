@@ -1,5 +1,5 @@
 """
-Raw Redis queue worker (replaces the earlier Celery-based approach
+Raw Redis queue worker (replaces the earlier Celery-based approach 
 """
 
 from __future__ import annotations
@@ -18,7 +18,9 @@ from shared.mongo_store import save_results, set_job_status
 
 load_dotenv()  # reads .env in the project root -- this is where you set REDIS_URL
 
-logging.basicConfig(level=logging.INFO)
+from shared.logging_config import configure_logging, get_job_logger
+
+configure_logging()  # Week 4: one centralized setup, not scattered basicConfig() calls
 logger = logging.getLogger("sdip.workers.redis_worker")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -46,6 +48,9 @@ def _get_scraper_registry():
 class RedisWorker:
     """Watches a Redis list for scrape jobs and runs them.
 
+    This class does the BRPOP loop + Mongo status bookkeeping. The actual
+    scraper dispatch is delegated to `process_job`, which is what the
+    tests exercise directly (without needing a live Redis connection).
     """
 
     def __init__(self, redis_url: str = REDIS_URL, queue_key: str = QUEUE_KEY):
@@ -83,6 +88,10 @@ class RedisWorker:
 async def process_job(payload: dict) -> dict:
     """Process a single job payload: {jobId, scraperType, inputParams}.
 
+    Separated from the Redis loop so it can be unit tested directly with
+    a plain dict, without needing a live Redis connection (mirrors how
+    tests/test_linkedin_scraper.py tests the scraper without a live
+    LinkedIn account).
     """
     job_id = payload.get("jobId")
     scraper_type = payload.get("scraperType")
@@ -92,19 +101,26 @@ async def process_job(payload: dict) -> dict:
         logger.error("Malformed job payload, missing jobId/scraperType: %s", payload)
         return {"status": "failed", "error": "malformed_payload"}
 
-    logger.info("Picked up job %s (scraperType=%s)", job_id, scraper_type)
+    
+    job_logger = get_job_logger("sdip.workers.redis_worker", job_id=job_id)
+    job_logger.info("Picked up job (scraperType=%s)", scraper_type)
 
     try:
         set_job_status(job_id, "running")
     except ScraperError as exc:
         # e.g. jobId isn't a valid ObjectId -- can't proceed at all.
-        logger.error("Could not mark job %s as running: %s", job_id, exc)
+        job_logger.error("Could not mark job as running: %s", exc)
         return {"status": "failed", "errors": [exc.to_dict()]}
 
     registry = _get_scraper_registry()
     scraper_cls = registry.get(scraper_type)
 
     if scraper_cls is None:
+        job_logger.error(
+            "Unknown scraper_type '%s' -- available: %s",
+            scraper_type,
+            list(registry.keys()),
+        )
         result = {
             "job_id": job_id,
             "scraper_type": scraper_type,
@@ -128,16 +144,16 @@ async def process_job(payload: dict) -> dict:
         
         save_results(job_id, scraper_type, result.get("results", []))
     except ScraperError as exc:
-        logger.error("Failed to save results for job %s: %s", job_id, exc)
+        job_logger.error("Failed to save results: %s", exc)
         result = {**result, "status": "failed", "errors": result.get("errors", []) + [exc.to_dict()]}
 
     set_job_status(job_id, result["status"])
 
-    logger.info(
-        "Job %s finished with status=%s, result_count=%s",
-        job_id,
+    job_logger.info(
+        "Job finished with status=%s, result_count=%s, errors=%s",
         result["status"],
         result.get("result_count", 0),
+        [e.get("error_type") for e in result.get("errors", [])] or None,
     )
     return result
 
