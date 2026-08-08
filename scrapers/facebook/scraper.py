@@ -1,8 +1,9 @@
 """
-Facebook Scraper.
+Facebook Scraper (FR-3.1).
 
 Input:  business_page
 Output: contact_info, website, phone
+
 
 """
 
@@ -16,6 +17,7 @@ from bs4 import BeautifulSoup
 from scrapers.base import BaseScraper
 from scrapers.facebook.config import (
     FACEBOOK_BASE_URL,
+    FACEBOOK_OWN_DOMAINS,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
@@ -24,6 +26,7 @@ from shared.human_behavior import human_delay
 from shared.proxy_pool import ProxyPool, default_proxy_pool
 from shared.retry import async_retry
 from shared.schema import empty_row
+from shared.text_patterns import PHONE_REGEX
 from shared.validation import require_str
 
 logger = logging.getLogger("sdip.scrapers.facebook")
@@ -102,17 +105,28 @@ class FacebookScraper(BaseScraper):
         )
 
         try:
-            phone_el = soup.select_one(SELECTORS["phone"])
-            website_el = soup.select_one(SELECTORS["website_link"])
-            about_block = soup.select_one(SELECTORS["about_contact_block"])
+            
+            meta_el = soup.select_one(SELECTORS["meta_description"])
+            meta_content = meta_el.get("content", "") if meta_el else ""
+            row["contact_info"] = meta_content or None
 
-            row["phone"] = (
-                phone_el.get("href", "").replace("tel:", "") if phone_el else None
-            )
-            row["website"] = website_el.get("href") if website_el else None
-            row["contact_info"] = (
-                about_block.get_text(" ", strip=True) if about_block else None
-            )
+            
+            page_text = soup.get_text(" ", strip=True)
+            tel_link = soup.select_one('a[href^="tel:"]')
+            if tel_link:
+                row["phone"] = tel_link.get("href", "").replace("tel:", "") or None
+            else:
+                phone_match = PHONE_REGEX.search(meta_content or page_text)
+                row["phone"] = phone_match.group(0) if phone_match else None
+
+            
+            for link in soup.select(SELECTORS["all_links"]):
+                href = link.get("href", "")
+                if href.startswith("http") and not any(
+                    domain in href for domain in FACEBOOK_OWN_DOMAINS
+                ):
+                    row["website"] = href
+                    break
         except Exception as exc:  # noqa: BLE001
             raise ParsingError(f"Failed to parse Facebook page: {exc}") from exc
 

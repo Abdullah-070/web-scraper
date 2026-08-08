@@ -37,15 +37,11 @@ class WebsiteScraper(BaseScraper):
     scraper_type = "website"
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        # Week 4 fix: require_str rejects a wrong-typed value (e.g. an int)
-        # with InvalidInputError instead of crashing on .strip() (NFR-4.1).
+        
         url = require_str(params, "website_url")
 
         parsed = urlparse(url if "://" in url else f"https://{url}")
-        # urlparse is lenient (e.g. "not a url at all" parses with a
-        # space-containing netloc) -- apply a stricter domain-shape check
-        # so obviously-invalid input is rejected before any network call
-        # is attempted, rather than surfacing as a confusing DNS failure.
+       
         domain_pattern = re.compile(
             r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
             r"(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
@@ -93,12 +89,25 @@ class WebsiteScraper(BaseScraper):
         text_content = soup.get_text(" ", strip=True)
         page_source_lower = html.lower()
 
-        emails = sorted(set(EMAIL_REGEX.findall(text_content)))
+        
+        mailto_emails = {
+            a["href"].replace("mailto:", "").split("?")[0]
+            for a in soup.find_all("a", href=True)
+            if a["href"].lower().startswith("mailto:")
+        }
+        tel_phones = {
+            a["href"].replace("tel:", "")
+            for a in soup.find_all("a", href=True)
+            if a["href"].lower().startswith("tel:")
+        }
+
+        text_emails = set(EMAIL_REGEX.findall(text_content))
+        emails = sorted(mailto_emails | text_emails)
         row["emails"] = emails or None
 
-        phones = sorted(set(PHONE_REGEX.findall(text_content)))
-        # phone regex is broad -- filter out obviously-too-short matches
-        phones = [p for p in phones if len(re_digits(p)) >= 7]
+        text_phones = set(PHONE_REGEX.findall(text_content))
+        
+        phones = sorted(tel_phones | {p for p in text_phones if len(re_digits(p)) >= 7})
         row["phone_numbers"] = phones or None
 
         social_links = []
