@@ -1,5 +1,6 @@
 # SDIP Scraper Engine
 
+
 ## 1. Queue architecture: raw Redis (not Celery/RQ, not BullMQ)
 
 Backend uses Node + BullMQ conventions on his side; this engine is

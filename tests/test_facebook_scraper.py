@@ -30,8 +30,7 @@ async def test_scrape_returns_standardized_envelope():
     assert row["phone"] == "+92 51 1234 5678"
     assert row["website"] == "https://brightsmile-example.com"
     assert "Bright Smile Dental Clinic" in row["contact_info"]
-    # Confirms the fix: Facebook's own domains (nav links, CDN assets)
-    # must never be picked as the "website" field.
+    
     assert "facebook.com" not in row["website"]
     assert "fbcdn.net" not in row["website"]
 
@@ -60,9 +59,7 @@ async def test_checkpoint_page_raises_blocked_error():
 
 @pytest.mark.asyncio
 async def test_generic_keyword_block_detected():
-    """Confirms the shared generic keyword list (not just Facebook-specific
-    selectors) also catches a block page.
-    """
+    
     scraper = FacebookScraper(job_id="test-job-4")
     block_html = "<html><body><p>Unusual traffic detected from your network.</p></body></html>"
 
@@ -91,9 +88,7 @@ async def test_page_with_no_contact_info_returns_none_fields():
 
 @pytest.mark.asyncio
 async def test_tel_link_preferred_over_regex_when_present():
-    """When an explicit tel: link exists, it should be used directly
-    rather than falling back to regex-scanning the meta description.
-    """
+   
     scraper = FacebookScraper(job_id="test-job-6")
     html_with_tel = """
     <html><body>
@@ -108,3 +103,20 @@ async def test_tel_link_preferred_over_regex_when_present():
 
     row = result["results"][0]
     assert row["phone"] == "+925199998888"
+
+
+@pytest.mark.asyncio
+async def test_phone_found_in_body_when_meta_has_no_phone():
+    scraper = FacebookScraper(job_id="test-job-7")
+    html = """
+    <html>
+    <head><meta property="og:description" content="Dentist in Islamabad. Open daily." /></head>
+    <body><p>Call us at +92 51 1234 5678 for appointments.</p></body>
+    </html>
+    """
+
+    result = await scraper.run({"business_page": "somepage", "fixture_html": html})
+    row = result["results"][0]
+
+    assert row["phone"] == "+92 51 1234 5678"
+    assert row["contact_info"] == "Dentist in Islamabad. Open daily."

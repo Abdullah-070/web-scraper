@@ -37,7 +37,7 @@ class GoogleMapsScraper(BaseScraper):
 
     def __init__(self, job_id: str | None = None, proxy_pool: ProxyPool | None = None):
         super().__init__(job_id=job_id)
-        
+
         self.proxy_pool = proxy_pool or default_proxy_pool
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +127,11 @@ class GoogleMapsScraper(BaseScraper):
                     row = empty_row(self.scraper_type)
                     try:
 
+                        try:
+                            await card.wait_for_selector(SELECTORS["name"], timeout=5000)
+                        except Exception:  # noqa: BLE001
+                            pass
+
                         name_el = await card.query_selector(SELECTORS["name"])
                         rating_el = await card.query_selector(SELECTORS["rating"])
                         address_el = await card.query_selector(SELECTORS["address_or_category"])
@@ -144,7 +149,13 @@ class GoogleMapsScraper(BaseScraper):
                             )
 
                         await card.click()
-                        await human_delay(1.0, 2.0)
+
+                        try:
+                            await page.wait_for_selector(
+                                SELECTORS["phone_button"], timeout=6000
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass  # some listings genuinely have no phone
 
                         phone_el = await page.query_selector(SELECTORS["phone_button"])
                         if phone_el:
@@ -157,10 +168,8 @@ class GoogleMapsScraper(BaseScraper):
                         if website_el:
                             row["website"] = await website_el.get_attribute("href")
 
-
                     except Exception as exc:  # noqa: BLE001
-                        # One bad card shouldn't kill the whole job -- log
-                        # and keep whatever fields we did get for this row.
+
                         logger.warning(
                             "Partial parse failure on a Google Maps card: %s", exc
                         )
@@ -186,8 +195,6 @@ class GoogleMapsScraper(BaseScraper):
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
 
-        # Week 3: shared detection utility, same as LinkedIn/Facebook/
-        # Instagram (NFR-3.1 -- one shared mechanism, not duplicated logic).
         check_for_block_or_captcha(
             soup, site_selectors=SELECTORS["captcha_indicators"]
         )
@@ -220,7 +227,7 @@ class GoogleMapsScraper(BaseScraper):
                     aria_label = rating_el.get("aria-label", "")
                     row["rating"], row["reviews"] = self._parse_rating_label(aria_label)
 
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  
                 raise ParsingError(
                     f"Failed to parse a Google Maps result card: {exc}"
                 ) from exc

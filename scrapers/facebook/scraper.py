@@ -110,16 +110,19 @@ class FacebookScraper(BaseScraper):
             meta_content = meta_el.get("content", "") if meta_el else ""
             row["contact_info"] = meta_content or None
 
-            
             page_text = soup.get_text(" ", strip=True)
             tel_link = soup.select_one('a[href^="tel:"]')
             if tel_link:
                 row["phone"] = tel_link.get("href", "").replace("tel:", "") or None
             else:
-                phone_match = PHONE_REGEX.search(meta_content or page_text)
+   
+                phone_match = PHONE_REGEX.search(meta_content) or PHONE_REGEX.search(
+                    page_text
+                )
                 row["phone"] = phone_match.group(0) if phone_match else None
 
-            
+            # website: first external link that isn't one of Facebook's
+            # own domains (CDN, tracking redirects, etc).
             for link in soup.select(SELECTORS["all_links"]):
                 href = link.get("href", "")
                 if href.startswith("http") and not any(

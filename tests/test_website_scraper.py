@@ -152,3 +152,69 @@ async def test_mailto_and_text_email_are_merged_without_duplicates(monkeypatch):
 
     row = result["results"][0]
     assert row["emails"] == ["hello@example.com", "sales@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_contact_page_discovered_and_merged(monkeypatch):
+    main_html = """
+    <html><body>
+      <p>Welcome to our site.</p>
+      <a href="/contact-us">Contact Us</a>
+    </body></html>
+    """
+    contact_html = """
+    <html><body>
+      <p>Email: sales@example.com</p>
+      <a href="tel:+15559998888">Call</a>
+    </body></html>
+    """
+
+    def fake_get(url, *a, **kw):
+        if "contact" in url:
+            return _mock_response(contact_html)
+        return _mock_response(main_html)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    scraper = WebsiteScraper(job_id="test-job-9")
+    result = await scraper.run({"website_url": "https://example.com"})
+
+    row = result["results"][0]
+    assert row["emails"] == ["sales@example.com"]
+    assert row["phone_numbers"] == ["+15559998888"]
+
+
+@pytest.mark.asyncio
+async def test_fallback_contact_path_used_when_no_link_found(monkeypatch):
+    main_html = "<html><body><p>No contact link here.</p></body></html>"
+    contact_html = "<html><body><p>hello@example.com</p></body></html>"
+
+    def fake_get(url, *a, **kw):
+        if url.rstrip("/").endswith("/contact") or url.rstrip("/").endswith("/contact-us"):
+            return _mock_response(contact_html)
+        return _mock_response(main_html)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    scraper = WebsiteScraper(job_id="test-job-10")
+    result = await scraper.run({"website_url": "https://example.com"})
+
+    assert result["results"][0]["emails"] == ["hello@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_contact_page_failure_does_not_crash_job(monkeypatch):
+    main_html = '<html><body><a href="/contact">Contact</a></body></html>'
+
+    def fake_get(url, *a, **kw):
+        if "contact" in url:
+            raise requests.exceptions.ConnectionError("boom")
+        return _mock_response(main_html)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    scraper = WebsiteScraper(job_id="test-job-11")
+    result = await scraper.run({"website_url": "https://example.com"})
+
+    assert result["status"] == "completed"
+    assert result["results"][0]["emails"] is None
