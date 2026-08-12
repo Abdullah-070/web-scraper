@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 
+
 from shared.text_patterns import EMAIL_REGEX, PHONE_REGEX  # noqa: F401
 
 SOCIAL_DOMAINS = [
@@ -22,6 +23,7 @@ SOCIAL_DOMAINS = [
     "tiktok.com",
 ]
 
+
 TECH_SIGNATURES = {
     "WordPress": ["wp-content", "wp-includes"],
     "Shopify": ["cdn.shopify.com", "shopify"],
@@ -33,3 +35,10 @@ TECH_SIGNATURES = {
 }
 
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("WEBSITE_SCRAPER_TIMEOUT_SECONDS", "15"))
+
+
+CONTACT_PAGE_KEYWORDS = ["contact", "about", "support"]
+
+FALLBACK_CONTACT_PATHS = ["/contact", "/contact-us"]
+
+MAX_CONTACT_PAGES_TO_FETCH = int(os.environ.get("WEBSITE_MAX_CONTACT_PAGES", "3"))

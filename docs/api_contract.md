@@ -1,4 +1,4 @@
-# SDIP Scraper Engine — Shared API Contract (v2, Week 1)
+# SDIP Scraper Engine
 
 
 ## 1. Queue architecture: raw Redis (not Celery/RQ, not BullMQ)
@@ -12,7 +12,7 @@ no queue framework in between.
 
 - Backend (Node): `ioredis` or `redis` — pushes JSON via `LPUSH`
 - Scraper (Python): `redis-py` — reads JSON via `BRPOP`
-- Queue key: **`job_queue`**
+- Queue key: **`job_queue`** 
 
 ## 2. End-to-end flow
 

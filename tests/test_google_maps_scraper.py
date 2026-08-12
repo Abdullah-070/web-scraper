@@ -93,7 +93,9 @@ async def test_empty_results_page_returns_completed_with_zero_rows():
 
 @pytest.mark.asyncio
 async def test_recaptcha_page_raises_blocked_error():
-    
+    """Week 3: confirms Google Maps now uses the shared CAPTCHA detection
+    utility, same as LinkedIn/Facebook/Instagram (NFR-3.1).
+    """
     scraper = GoogleMapsScraper(job_id="test-job-5")
     captcha_html = '<html><body><div class="g-recaptcha"></div></body></html>'
 
@@ -101,3 +103,34 @@ async def test_recaptcha_page_raises_blocked_error():
 
     assert result["status"] == "failed"
     assert result["errors"][0]["error_type"] == "blocked_or_captcha"
+
+
+@pytest.mark.asyncio
+async def test_max_results_caps_returned_rows():
+    """Post-launch fix: results are now capped deterministically instead
+    of varying by how much the feed happened to scroll-load (Intern 2's
+    'inconsistent entry counts' report).
+    """
+    html = FIXTURE_PATH.read_text()
+    scraper = GoogleMapsScraper(job_id="test-job-6")
+
+    params = _valid_params(fixture_html=html)
+    params["max_results"] = 1
+
+    result = await scraper.run(params)
+
+    assert result["status"] == "completed"
+    assert result["result_count"] == 1
+    assert result["results"][0]["business_name"] == "Bright Smile Dental"
+
+
+@pytest.mark.asyncio
+async def test_invalid_max_results_fails_cleanly():
+    scraper = GoogleMapsScraper(job_id="test-job-7")
+    params = _valid_params(fixture_html="<html></html>")
+    params["max_results"] = "not-a-number"
+
+    result = await scraper.run(params)
+
+    assert result["status"] == "failed"
+    assert result["errors"][0]["error_type"] == "invalid_input"

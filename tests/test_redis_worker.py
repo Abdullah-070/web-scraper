@@ -1,8 +1,6 @@
 """
 Tests for workers.redis_worker.process_job.
 
-Uses mongomock so these tests run without a live MongoDB or Redis
-connection.
 """
 
 from pathlib import Path
@@ -43,12 +41,11 @@ def _linkedin_payload(job_id: str, fixture_html: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_process_job_inserts_one_result_document_per_row(mock_mongo):
-    """2 LinkedIn results in the fixture -> 2 separate Results documents,
-    each shaped 
-    """
+    
     html = FIXTURE_PATH.read_text()
     db = mongo_store.get_db()
 
+    
     user_id = ObjectId()
     job_id_obj = db[mongo_store.JOBS_COLLECTION].insert_one(
         {"userId": user_id, "status": "pending"}
@@ -110,8 +107,7 @@ async def test_process_job_malformed_payload_missing_job_id(mock_mongo):
 
 @pytest.mark.asyncio
 async def test_process_job_invalid_object_id_fails_cleanly(mock_mongo):
-    """A jobId that isn't a valid ObjectId must fail cleanly rather than crash the worker.
-    """
+    
     payload = _linkedin_payload("not-a-real-object-id", "irrelevant")
 
     result = await process_job(payload)
@@ -139,7 +135,7 @@ async def test_process_job_missing_job_doc_saves_results_with_null_user_id(mock_
 
 @pytest.mark.asyncio
 async def test_process_job_google_maps_registered_and_wired(mock_mongo):
-   
+    
     gmaps_fixture = (
         Path(__file__).parent / "fixtures" / "google_maps_sample.html"
     ).read_text()
@@ -233,7 +229,7 @@ async def test_process_job_facebook_registered_and_wired(mock_mongo):
     result_docs = list(db[mongo_store.RESULTS_COLLECTION].find({"jobId": job_id_obj}))
     assert len(result_docs) == 1
     assert result_docs[0]["scraperType"] == "facebook"
-    assert result_docs[0]["data"]["phone"] == "+925112345678"
+    assert result_docs[0]["data"]["phone"] == "+92 51 1234 5678"
 
 
 @pytest.mark.asyncio

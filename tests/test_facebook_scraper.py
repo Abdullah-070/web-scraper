@@ -27,9 +27,12 @@ async def test_scrape_returns_standardized_envelope():
 
     row = result["results"][0]
     assert set(row.keys()) == {"contact_info", "website", "phone"}
-    assert row["phone"] == "+925112345678"
+    assert row["phone"] == "+92 51 1234 5678"
     assert row["website"] == "https://brightsmile-example.com"
     assert "Bright Smile Dental Clinic" in row["contact_info"]
+    
+    assert "facebook.com" not in row["website"]
+    assert "fbcdn.net" not in row["website"]
 
 
 @pytest.mark.asyncio
@@ -56,8 +59,7 @@ async def test_checkpoint_page_raises_blocked_error():
 
 @pytest.mark.asyncio
 async def test_generic_keyword_block_detected():
-    """Confirms the shared generic keyword list 
-    """
+    
     scraper = FacebookScraper(job_id="test-job-4")
     block_html = "<html><body><p>Unusual traffic detected from your network.</p></body></html>"
 
@@ -82,3 +84,39 @@ async def test_page_with_no_contact_info_returns_none_fields():
     assert row["phone"] is None
     assert row["website"] is None
     assert row["contact_info"] is None
+
+
+@pytest.mark.asyncio
+async def test_tel_link_preferred_over_regex_when_present():
+   
+    scraper = FacebookScraper(job_id="test-job-6")
+    html_with_tel = """
+    <html><body>
+    <a href="tel:+925199998888">Call us</a>
+    <p>Some other number mentioned: +92 51 1234 5678 in the text.</p>
+    </body></html>
+    """
+
+    result = await scraper.run(
+        {"business_page": "somepage", "fixture_html": html_with_tel}
+    )
+
+    row = result["results"][0]
+    assert row["phone"] == "+925199998888"
+
+
+@pytest.mark.asyncio
+async def test_phone_found_in_body_when_meta_has_no_phone():
+    scraper = FacebookScraper(job_id="test-job-7")
+    html = """
+    <html>
+    <head><meta property="og:description" content="Dentist in Islamabad. Open daily." /></head>
+    <body><p>Call us at +92 51 1234 5678 for appointments.</p></body>
+    </html>
+    """
+
+    result = await scraper.run({"business_page": "somepage", "fixture_html": html})
+    row = result["results"][0]
+
+    assert row["phone"] == "+92 51 1234 5678"
+    assert row["contact_info"] == "Dentist in Islamabad. Open daily."
