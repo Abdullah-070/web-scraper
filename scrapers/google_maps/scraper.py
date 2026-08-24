@@ -17,6 +17,9 @@ from bs4 import BeautifulSoup
 from scrapers.base import BaseScraper
 from scrapers.google_maps.config import (
     DEFAULT_MAX_RESULTS,
+    DEFAULT_REQUIRE_CONTACT_INFO,
+    DETAIL_PANEL_POLL_ATTEMPTS,
+    DETAIL_PANEL_POLL_DELAY_MS,
     GOOGLE_MAPS_SEARCH_URL,
     MAX_SCROLL_ITERATIONS,
     SELECTORS,
@@ -60,6 +63,9 @@ class GoogleMapsScraper(BaseScraper):
             "city": require_str(params, "city"),
             "country": require_str(params, "country"),
             "max_results": max_results,
+            "require_contact_info": bool(
+                params.get("require_contact_info", DEFAULT_REQUIRE_CONTACT_INFO)
+            ),
             "fixture_html": params.get("fixture_html"),
         }
 
@@ -69,6 +75,9 @@ class GoogleMapsScraper(BaseScraper):
             rows = self._parse_results(html)
         else:
             rows = await self._scrape_live(params)
+
+        if params["require_contact_info"]:
+            rows = [r for r in rows if r.get("phone") or r.get("website")]
 
         return rows[: params["max_results"]]
 
@@ -148,25 +157,43 @@ class GoogleMapsScraper(BaseScraper):
                                 aria_label
                             )
 
+
                         await card.click()
 
-                        try:
-                            await page.wait_for_selector(
-                                SELECTORS["phone_button"], timeout=6000
+                        panel_matched = False
+                        for _ in range(DETAIL_PANEL_POLL_ATTEMPTS):
+                            title_el = await page.query_selector(
+                                SELECTORS["detail_panel_title"]
                             )
-                        except Exception:  # noqa: BLE001
-                            pass  # some listings genuinely have no phone
-
-                        phone_el = await page.query_selector(SELECTORS["phone_button"])
-                        if phone_el:
-                            data_item_id = (
-                                await phone_el.get_attribute("data-item-id") or ""
+                            title_text = (
+                                (await title_el.inner_text()).strip() if title_el else ""
                             )
-                            row["phone"] = data_item_id.replace("phone:tel:", "") or None
+                            if row["business_name"] and title_text == row["business_name"]:
+                                panel_matched = True
+                                break
+                            await page.wait_for_timeout(DETAIL_PANEL_POLL_DELAY_MS)
 
-                        website_el = await page.query_selector(SELECTORS["website_link"])
-                        if website_el:
-                            row["website"] = await website_el.get_attribute("href")
+                        if not panel_matched:
+                            logger.warning(
+                                "Detail panel never confirmed matching '%s' -- "
+                                "skipping phone/website for this row rather "
+                                "than risk stale data.",
+                                row["business_name"],
+                            )
+                        else:
+                            phone_el = await page.query_selector(SELECTORS["phone_button"])
+                            if phone_el:
+                                data_item_id = (
+                                    await phone_el.get_attribute("data-item-id") or ""
+                                )
+                                row["phone"] = (
+                                    data_item_id.replace("phone:tel:", "") or None
+                                )
+
+                            website_el = await page.query_selector(SELECTORS["website_link"])
+                            if website_el:
+                                row["website"] = await website_el.get_attribute("href")
+
 
                     except Exception as exc:  # noqa: BLE001
 
@@ -194,6 +221,7 @@ class GoogleMapsScraper(BaseScraper):
 
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
+
 
         check_for_block_or_captcha(
             soup, site_selectors=SELECTORS["captcha_indicators"]
@@ -227,7 +255,7 @@ class GoogleMapsScraper(BaseScraper):
                     aria_label = rating_el.get("aria-label", "")
                     row["rating"], row["reviews"] = self._parse_rating_label(aria_label)
 
-            except Exception as exc:  
+            except Exception as exc:  # noqa: BLE001
                 raise ParsingError(
                     f"Failed to parse a Google Maps result card: {exc}"
                 ) from exc
@@ -238,12 +266,17 @@ class GoogleMapsScraper(BaseScraper):
 
     @staticmethod
     def _parse_rating_label(aria_label: str) -> tuple[float | None, int | None]:
-        """Parse an aria-label like '4.5 stars 123 Reviews' into (4.5, 123)."""
+ 
         import re
 
-        rating_match = re.search(r"(\d+(\.\d+)?)\s*stars?", aria_label)
-        reviews_match = re.search(r"([\d,]+)\s*[Rr]eviews?", aria_label)
+        rating_match = re.search(r"(\d+(\.\d+)?)\s*(?:stars?|out of 5)", aria_label)
+        reviews_match = re.search(
+            r"([\d,]+)\s*(?:reviews?)|\(([\d,]+)\)", aria_label, re.IGNORECASE
+        )
 
         rating = float(rating_match.group(1)) if rating_match else None
-        reviews = int(reviews_match.group(1).replace(",", "")) if reviews_match else None
+        reviews = None
+        if reviews_match:
+            digits = reviews_match.group(1) or reviews_match.group(2)
+            reviews = int(digits.replace(",", "")) if digits else None
         return rating, reviews

@@ -93,9 +93,7 @@ async def test_empty_results_page_returns_completed_with_zero_rows():
 
 @pytest.mark.asyncio
 async def test_recaptcha_page_raises_blocked_error():
-    """Week 3: confirms Google Maps now uses the shared CAPTCHA detection
-    utility, same as LinkedIn/Facebook/Instagram (NFR-3.1).
-    """
+   
     scraper = GoogleMapsScraper(job_id="test-job-5")
     captcha_html = '<html><body><div class="g-recaptcha"></div></body></html>'
 
@@ -107,10 +105,7 @@ async def test_recaptcha_page_raises_blocked_error():
 
 @pytest.mark.asyncio
 async def test_max_results_caps_returned_rows():
-    """Post-launch fix: results are now capped deterministically instead
-    of varying by how much the feed happened to scroll-load (Intern 2's
-    'inconsistent entry counts' report).
-    """
+    
     html = FIXTURE_PATH.read_text()
     scraper = GoogleMapsScraper(job_id="test-job-6")
 
@@ -134,3 +129,26 @@ async def test_invalid_max_results_fails_cleanly():
 
     assert result["status"] == "failed"
     assert result["errors"][0]["error_type"] == "invalid_input"
+
+
+@pytest.mark.asyncio
+async def test_require_contact_info_filters_empty_rows():
+    html = FIXTURE_PATH.read_text()
+    scraper = GoogleMapsScraper(job_id="test-job-8")
+
+    params = _valid_params(fixture_html=html)
+    params["require_contact_info"] = True
+
+    result = await scraper.run(params)
+
+    assert all(r["phone"] or r["website"] for r in result["results"])
+
+
+@pytest.mark.asyncio
+async def test_require_contact_info_off_by_default():
+    html = FIXTURE_PATH.read_text()
+    scraper = GoogleMapsScraper(job_id="test-job-9")
+
+    result = await scraper.run(_valid_params(fixture_html=html))
+
+    assert result["result_count"] == 2  # both rows kept, filter not applied

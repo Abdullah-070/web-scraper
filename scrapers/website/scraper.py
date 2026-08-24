@@ -20,7 +20,9 @@ from scrapers.base import BaseScraper
 from scrapers.website.config import (
     CONTACT_PAGE_KEYWORDS,
     EMAIL_REGEX,
+    ENABLE_JS_RENDER_FALLBACK,
     FALLBACK_CONTACT_PATHS,
+    JS_FRAMEWORK_SIGNATURES,
     MAX_CONTACT_PAGES_TO_FETCH,
     PHONE_REGEX,
     REQUEST_TIMEOUT_SECONDS,
@@ -68,7 +70,33 @@ class WebsiteScraper(BaseScraper):
                 logger.warning("Contact page fetch failed for %s: %s", contact_url, exc)
                 continue
 
+        found_nothing = not row["emails"] and not row["phone_numbers"]
+        looks_js_rendered = any(sig in html.lower() for sig in JS_FRAMEWORK_SIGNATURES)
+        if ENABLE_JS_RENDER_FALLBACK and found_nothing and looks_js_rendered:
+            try:
+                rendered_html = await self._render_page(base_url)
+                rendered_row = self._parse_page(rendered_html, headers)
+                row = self._merge_rows(row, rendered_row)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("JS render fallback failed for %s: %s", base_url, exc)
+
         return [row]
+
+    async def _render_page(self, url: str) -> str:
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            logger.warning("Playwright not installed -- skipping JS render fallback.")
+            return ""
+
+        await human_delay(0.5, 1.5)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url, timeout=REQUEST_TIMEOUT_SECONDS * 1000, wait_until="networkidle")
+            content = await page.content()
+            await browser.close()
+            return content
 
     def _find_contact_urls(self, html: str, base_url: str) -> list[str]:
         soup = BeautifulSoup(html, "html.parser")

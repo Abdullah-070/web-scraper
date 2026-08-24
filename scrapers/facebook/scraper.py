@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -105,7 +106,7 @@ class FacebookScraper(BaseScraper):
         )
 
         try:
-            
+
             meta_el = soup.select_one(SELECTORS["meta_description"])
             meta_content = meta_el.get("content", "") if meta_el else ""
             row["contact_info"] = meta_content or None
@@ -115,19 +116,27 @@ class FacebookScraper(BaseScraper):
             if tel_link:
                 row["phone"] = tel_link.get("href", "").replace("tel:", "") or None
             else:
-   
+  
                 phone_match = PHONE_REGEX.search(meta_content) or PHONE_REGEX.search(
                     page_text
                 )
                 row["phone"] = phone_match.group(0) if phone_match else None
 
-            # website: first external link that isn't one of Facebook's
-            # own domains (CDN, tracking redirects, etc).
+            
             for link in soup.select(SELECTORS["all_links"]):
                 href = link.get("href", "")
-                if href.startswith("http") and not any(
-                    domain in href for domain in FACEBOOK_OWN_DOMAINS
-                ):
+                if not href.startswith("http"):
+                    continue
+
+                if "l.facebook.com/l.php" in href or "lm.facebook.com/l.php" in href:
+                    qs = parse_qs(urlparse(href).query)
+                    real_url = qs.get("u", [None])[0]
+                    if real_url and not any(d in real_url for d in FACEBOOK_OWN_DOMAINS):
+                        row["website"] = unquote(real_url)
+                        break
+                    continue
+
+                if not any(domain in href for domain in FACEBOOK_OWN_DOMAINS):
                     row["website"] = href
                     break
         except Exception as exc:  # noqa: BLE001

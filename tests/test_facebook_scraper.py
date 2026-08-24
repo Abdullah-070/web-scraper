@@ -30,7 +30,7 @@ async def test_scrape_returns_standardized_envelope():
     assert row["phone"] == "+92 51 1234 5678"
     assert row["website"] == "https://brightsmile-example.com"
     assert "Bright Smile Dental Clinic" in row["contact_info"]
-    
+
     assert "facebook.com" not in row["website"]
     assert "fbcdn.net" not in row["website"]
 
@@ -59,7 +59,7 @@ async def test_checkpoint_page_raises_blocked_error():
 
 @pytest.mark.asyncio
 async def test_generic_keyword_block_detected():
-    
+
     scraper = FacebookScraper(job_id="test-job-4")
     block_html = "<html><body><p>Unusual traffic detected from your network.</p></body></html>"
 
@@ -88,7 +88,6 @@ async def test_page_with_no_contact_info_returns_none_fields():
 
 @pytest.mark.asyncio
 async def test_tel_link_preferred_over_regex_when_present():
-   
     scraper = FacebookScraper(job_id="test-job-6")
     html_with_tel = """
     <html><body>
@@ -120,3 +119,42 @@ async def test_phone_found_in_body_when_meta_has_no_phone():
 
     assert row["phone"] == "+92 51 1234 5678"
     assert row["contact_info"] == "Dentist in Islamabad. Open daily."
+
+
+@pytest.mark.asyncio
+async def test_website_unwrapped_from_facebook_link_redirect():
+    
+    scraper = FacebookScraper(job_id="test-job-8")
+    html = """
+    <html><body>
+      <a href="https://l.facebook.com/l.php?u=https%3A%2F%2Fpnytrainings.com%2F&h=abc">
+        pnytrainings.com
+      </a>
+    </body></html>
+    """
+
+    result = await scraper.run({"business_page": "somepage", "fixture_html": html})
+    row = result["results"][0]
+
+    assert row["website"] == "https://pnytrainings.com/"
+
+
+@pytest.mark.asyncio
+async def test_facebook_wrapped_link_to_own_domain_is_ignored():
+
+    scraper = FacebookScraper(job_id="test-job-9")
+    html = """
+    <html><body>
+      <a href="https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.facebook.com%2Fother-page&h=abc">
+        internal
+      </a>
+      <a href="https://l.facebook.com/l.php?u=https%3A%2F%2Freal-site.com%2F&h=xyz">
+        real
+      </a>
+    </body></html>
+    """
+
+    result = await scraper.run({"business_page": "somepage", "fixture_html": html})
+    row = result["results"][0]
+
+    assert row["website"] == "https://real-site.com/"
