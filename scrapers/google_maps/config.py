@@ -15,7 +15,6 @@ REQUIRED_INPUT_FIELDS = ["business_type", "city", "country"]
 
 GOOGLE_MAPS_SEARCH_URL = "https://www.google.com/maps/search/"
 
-
 SELECTORS = {
     "results_panel": 'div[role="feed"]',
     "result_card": 'div[role="feed"] > div > div[jsaction]',
@@ -23,13 +22,13 @@ SELECTORS = {
     "rating": 'span[role="img"]',
     "address_or_category": ".fontBodyMedium",
     "website_link": 'a[data-value="Website"]',
-
     "phone_button": 'button[data-item-id^="phone:"]',
-
-    "detail_panel_title": 'h1.DUwDvf, h1[class*="fontHeadlineLarge"]',
+    "detail_panel_container": 'div[role="main"]',
+    "detail_rating_value": ".fontDisplayLarge",
     "captcha_indicators": ["#recaptcha", ".g-recaptcha"],
 }
 
+REVIEWS_TEXT_PATTERN = r"([\d,]+(?:\.\d+)?)\s*([KMkm])?\s+reviews?"
 
 DETAIL_PANEL_POLL_ATTEMPTS = 6
 DETAIL_PANEL_POLL_DELAY_MS = 500
@@ -37,7 +36,6 @@ DETAIL_PANEL_POLL_DELAY_MS = 500
 
 MAX_SCROLL_ITERATIONS = int(os.environ.get("GOOGLE_MAPS_MAX_SCROLL_ITERATIONS", "6"))
 
-
-DEFAULT_MAX_RESULTS = int(os.environ.get("GOOGLE_MAPS_DEFAULT_MAX_RESULTS", "20"))
+DEFAULT_MAX_RESULTS = int(os.environ.get("GOOGLE_MAPS_DEFAULT_MAX_RESULTS", "10"))
 
 DEFAULT_REQUIRE_CONTACT_INFO = False

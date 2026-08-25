@@ -19,6 +19,7 @@ from scrapers.base import BaseScraper
 from scrapers.facebook.config import (
     FACEBOOK_BASE_URL,
     FACEBOOK_OWN_DOMAINS,
+    OTHER_SOCIAL_DOMAINS,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
@@ -116,13 +117,13 @@ class FacebookScraper(BaseScraper):
             if tel_link:
                 row["phone"] = tel_link.get("href", "").replace("tel:", "") or None
             else:
-  
+
                 phone_match = PHONE_REGEX.search(meta_content) or PHONE_REGEX.search(
                     page_text
                 )
                 row["phone"] = phone_match.group(0) if phone_match else None
 
-            
+            excluded_domains = FACEBOOK_OWN_DOMAINS + OTHER_SOCIAL_DOMAINS
             for link in soup.select(SELECTORS["all_links"]):
                 href = link.get("href", "")
                 if not href.startswith("http"):
@@ -131,12 +132,12 @@ class FacebookScraper(BaseScraper):
                 if "l.facebook.com/l.php" in href or "lm.facebook.com/l.php" in href:
                     qs = parse_qs(urlparse(href).query)
                     real_url = qs.get("u", [None])[0]
-                    if real_url and not any(d in real_url for d in FACEBOOK_OWN_DOMAINS):
+                    if real_url and not any(d in real_url for d in excluded_domains):
                         row["website"] = unquote(real_url)
                         break
                     continue
 
-                if not any(domain in href for domain in FACEBOOK_OWN_DOMAINS):
+                if not any(domain in href for domain in excluded_domains):
                     row["website"] = href
                     break
         except Exception as exc:  # noqa: BLE001

@@ -93,7 +93,7 @@ async def test_empty_results_page_returns_completed_with_zero_rows():
 
 @pytest.mark.asyncio
 async def test_recaptcha_page_raises_blocked_error():
-   
+    
     scraper = GoogleMapsScraper(job_id="test-job-5")
     captcha_html = '<html><body><div class="g-recaptcha"></div></body></html>'
 
@@ -141,6 +141,7 @@ async def test_require_contact_info_filters_empty_rows():
 
     result = await scraper.run(params)
 
+    
     assert all(r["phone"] or r["website"] for r in result["results"])
 
 
@@ -152,3 +153,104 @@ async def test_require_contact_info_off_by_default():
     result = await scraper.run(_valid_params(fixture_html=html))
 
     assert result["result_count"] == 2  # both rows kept, filter not applied
+
+
+@pytest.mark.asyncio
+async def test_card_with_no_business_name_is_skipped():
+    
+    html = """
+    <html><body>
+    <div role="feed">
+      <div>
+        <div jsaction="empty1">
+          <div class="fontHeadlineSmall"></div>
+        </div>
+      </div>
+      <div>
+        <div jsaction="real1">
+          <div class="fontHeadlineSmall">Real Pharmacy</div>
+          <span role="img" aria-label="4.0 stars 10 Reviews"></span>
+        </div>
+      </div>
+    </div>
+    </body></html>
+    """
+    scraper = GoogleMapsScraper(job_id="test-job-10")
+    result = await scraper.run(_valid_params(fixture_html=html))
+
+    assert result["result_count"] == 1
+    assert result["results"][0]["business_name"] == "Real Pharmacy"
+
+
+def test_reviews_text_pattern_matches_real_panel_text():
+    
+    import re
+
+    from scrapers.google_maps.config import REVIEWS_TEXT_PATTERN
+
+    panel_text = "Doctor's Pharmacy 4.0 4.0 stars 36 reviews Write a review Overview Reviews About"
+    match = re.search(REVIEWS_TEXT_PATTERN, panel_text, re.IGNORECASE)
+
+    assert match is not None
+    assert match.group(1) == "36"
+
+
+def test_reviews_text_pattern_handles_comma_thousands():
+    import re
+
+    from scrapers.google_maps.config import REVIEWS_TEXT_PATTERN
+
+    match = re.search(REVIEWS_TEXT_PATTERN, "4.5 stars 1,234 reviews", re.IGNORECASE)
+    assert match.group(1) == "1,234"
+
+
+def test_reviews_text_pattern_handles_abbreviated_counts():
+    
+    import re
+
+    from scrapers.google_maps.config import REVIEWS_TEXT_PATTERN
+    from scrapers.google_maps.scraper import GoogleMapsScraper
+
+    cases = [
+        ("36 reviews", 36),
+        ("1.2K reviews", 1200),
+        ("3.4M reviews", 3400000),
+        ("1,234 reviews", 1234),
+    ]
+    for text, expected in cases:
+        match = re.search(REVIEWS_TEXT_PATTERN, text, re.IGNORECASE)
+        assert match is not None, f"no match for {text!r}"
+        assert GoogleMapsScraper._parse_review_count(match) == expected
+
+
+def test_english_locale_forced_in_search_url():
+    
+    import inspect
+
+    from scrapers.google_maps import scraper as gmaps_module
+
+    source = inspect.getsource(gmaps_module)
+    assert "hl=en" in source
+
+
+def test_reviews_pattern_ignores_star_breakdown_aria_labels():
+    
+    import re
+
+    from bs4 import BeautifulSoup
+
+    from scrapers.google_maps.config import REVIEWS_TEXT_PATTERN
+
+    real_snippet = (
+        '<div class="PPCwl cYOgid"><div class="Bd93Zb"><table><tbody>'
+        '<tr role="img" aria-label="5 stars, 4 reviews"><td>5</td></tr>'
+        '<tr role="img" aria-label="1 stars, 1 review"><td>1</td></tr>'
+        "</tbody></table></div>"
+        '<div class="jANrlb"><div class="fontDisplayLarge">4.2</div>'
+        '<button class="GQjSyb"><div class="HHrUdb"><span>5 reviews</span>'
+        "</div></button></div></div>"
+    )
+    visible_text = BeautifulSoup(real_snippet, "html.parser").get_text(" ", strip=True)
+    match = re.search(REVIEWS_TEXT_PATTERN, visible_text, re.IGNORECASE)
+
+    assert match.group(1) == "5"  # the true total, not "4" from the breakdown row

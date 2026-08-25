@@ -10,6 +10,7 @@ Outputs: business_name, phone, email, website, address, rating, reviews
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -18,10 +19,9 @@ from scrapers.base import BaseScraper
 from scrapers.google_maps.config import (
     DEFAULT_MAX_RESULTS,
     DEFAULT_REQUIRE_CONTACT_INFO,
-    DETAIL_PANEL_POLL_ATTEMPTS,
-    DETAIL_PANEL_POLL_DELAY_MS,
     GOOGLE_MAPS_SEARCH_URL,
     MAX_SCROLL_ITERATIONS,
+    REVIEWS_TEXT_PATTERN,
     SELECTORS,
 )
 from shared.captcha_detection import check_for_block_or_captcha
@@ -42,6 +42,18 @@ class GoogleMapsScraper(BaseScraper):
         super().__init__(job_id=job_id)
 
         self.proxy_pool = proxy_pool or default_proxy_pool
+
+    PHONE_TEXT_PATTERN = re.compile(r"(\+?\d[\d\s\-()]{7,}\d)")
+    RATING_REVIEWS_INLINE_PATTERN = re.compile(
+        r"(\d+(?:\.\d+)?)\s*\((\d[\d,]*)\)", re.IGNORECASE
+    )
+    DETAIL_REVIEW_SUMMARY_PATTERN = re.compile(
+        r"Review summary[\s\S]{0,250}?([\d,]+(?:\.\d+)?)([KMkm]?)\s+reviews?",
+        re.IGNORECASE,
+    )
+    GENERIC_REVIEWS_PATTERN = re.compile(
+        r"\b([\d,]+(?:\.\d+)?)([KMkm]?)\s+reviews?\b", re.IGNORECASE
+    )
 
     def validate_input(self, params: dict[str, Any]) -> dict[str, Any]:
         max_results = params.get("max_results", DEFAULT_MAX_RESULTS)
@@ -93,17 +105,32 @@ class GoogleMapsScraper(BaseScraper):
             ) from exc
 
         query = f"{params['business_type']} in {params['city']}, {params['country']}"
-        url = f"{GOOGLE_MAPS_SEARCH_URL}{query.replace(' ', '+')}"
+
+        url = f"{GOOGLE_MAPS_SEARCH_URL}{query.replace(' ', '+')}?hl=en"
 
         proxy = self.proxy_pool.get_proxy()
-        launch_kwargs = {"headless": True}
+        launch_kwargs = {
+            "headless": True,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--lang=en-US,en",
+            ],
+        }
         if proxy:
             launch_kwargs["proxy"] = {"server": proxy}
 
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(**launch_kwargs)
-                page = await browser.new_page()
+                context = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                    ),
+                    locale="en-US",
+                    viewport={"width": 1366, "height": 900},
+                )
+                page = await context.new_page()
 
                 await human_delay(1.0, 2.0)
                 await page.goto(url, timeout=30000)
@@ -142,61 +169,60 @@ class GoogleMapsScraper(BaseScraper):
                             pass
 
                         name_el = await card.query_selector(SELECTORS["name"])
-                        rating_el = await card.query_selector(SELECTORS["rating"])
                         address_el = await card.query_selector(SELECTORS["address_or_category"])
+                        rating_el = await card.query_selector(SELECTORS["rating"])
+                        website_el = await card.query_selector(SELECTORS["website_link"])
+
+                        card_text = (await card.inner_text()) if card else ""
 
                         row["business_name"] = (
                             (await name_el.inner_text()).strip() if name_el else None
                         )
+
+                        if not row["business_name"]:
+                            logger.info(
+                                "Skipping a matched card with no business name "
+                                "(likely a non-listing element, not a real result)."
+                            )
+                            continue
+
                         row["address"] = (
                             (await address_el.inner_text()).strip() if address_el else None
                         )
+
+                        if website_el:
+                            row["website"] = await website_el.get_attribute("href")
+
                         if rating_el:
                             aria_label = await rating_el.get_attribute("aria-label") or ""
-                            row["rating"], row["reviews"] = self._parse_rating_label(
-                                aria_label
-                            )
+                            row["rating"], row["reviews"] = self._parse_rating_label(aria_label)
 
+                        if row["rating"] is None or row["reviews"] is None:
+                            fallback_rating, fallback_reviews = (
+                                self._parse_rating_reviews_from_card_text(card_text)
+                            )
+                            if row["rating"] is None:
+                                row["rating"] = fallback_rating
+                            if row["reviews"] is None:
+                                row["reviews"] = fallback_reviews
+
+                        row["phone"] = self._extract_phone_from_text(card_text)
 
                         await card.click()
-
-                        panel_matched = False
-                        for _ in range(DETAIL_PANEL_POLL_ATTEMPTS):
-                            title_el = await page.query_selector(
-                                SELECTORS["detail_panel_title"]
-                            )
-                            title_text = (
-                                (await title_el.inner_text()).strip() if title_el else ""
-                            )
-                            if row["business_name"] and title_text == row["business_name"]:
-                                panel_matched = True
-                                break
-                            await page.wait_for_timeout(DETAIL_PANEL_POLL_DELAY_MS)
-
-                        if not panel_matched:
-                            logger.warning(
-                                "Detail panel never confirmed matching '%s' -- "
-                                "skipping phone/website for this row rather "
-                                "than risk stale data.",
-                                row["business_name"],
-                            )
-                        else:
-                            phone_el = await page.query_selector(SELECTORS["phone_button"])
-                            if phone_el:
-                                data_item_id = (
-                                    await phone_el.get_attribute("data-item-id") or ""
+                        detail_text = await self._extract_detail_panel_text(
+                            page, row["business_name"]
+                        )
+                        if detail_text:
+                            if row["reviews"] is None:
+                                row["reviews"] = self._parse_reviews_from_detail_text(
+                                    detail_text
                                 )
-                                row["phone"] = (
-                                    data_item_id.replace("phone:tel:", "") or None
-                                )
-
-                            website_el = await page.query_selector(SELECTORS["website_link"])
-                            if website_el:
-                                row["website"] = await website_el.get_attribute("href")
-
+                        if row["reviews"] is None:
+                            full_text = await page.inner_text("body")
+                            row["reviews"] = self._parse_reviews_from_detail_text(full_text)
 
                     except Exception as exc:  # noqa: BLE001
-
+                        
                         logger.warning(
                             "Partial parse failure on a Google Maps card: %s", exc
                         )
@@ -222,7 +248,6 @@ class GoogleMapsScraper(BaseScraper):
     def _parse_results(self, html: str) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
 
-
         check_for_block_or_captcha(
             soup, site_selectors=SELECTORS["captcha_indicators"]
         )
@@ -238,12 +263,20 @@ class GoogleMapsScraper(BaseScraper):
             row = empty_row(self.scraper_type)
             try:
                 name_el = card.select_one(SELECTORS["name"])
+                row["business_name"] = name_el.get_text(strip=True) if name_el else None
+
+                if not row["business_name"]:
+                    logger.info(
+                        "Skipping a matched card with no business name "
+                        "(likely a non-listing element, not a real result)."
+                    )
+                    continue
+
                 rating_el = card.select_one(SELECTORS["rating"])
                 address_el = card.select_one(SELECTORS["address_or_category"])
                 website_el = card.select_one(SELECTORS["website_link"])
                 phone_el = card.select_one(SELECTORS["phone_button"])
 
-                row["business_name"] = name_el.get_text(strip=True) if name_el else None
                 row["address"] = address_el.get_text(strip=True) if address_el else None
                 row["website"] = website_el.get("href") if website_el else None
 
@@ -265,8 +298,91 @@ class GoogleMapsScraper(BaseScraper):
         return rows
 
     @staticmethod
+    def _parse_review_count(match: "re.Match") -> int | None:
+        
+        number_str, suffix = match.group(1), match.group(2)
+        if not number_str:
+            return None
+        number = float(number_str.replace(",", ""))
+        if suffix:
+            if suffix.upper() == "K":
+                number *= 1_000
+            elif suffix.upper() == "M":
+                number *= 1_000_000
+        return int(number)
+
+    @classmethod
+    def _extract_phone_from_text(cls, text: str | None) -> str | None:
+        if not text:
+            return None
+        match = cls.PHONE_TEXT_PATTERN.search(text)
+        return match.group(1).strip() if match else None
+
+    @classmethod
+    def _parse_rating_reviews_from_card_text(
+        cls, text: str | None
+    ) -> tuple[float | None, int | None]:
+        if not text:
+            return None, None
+        match = cls.RATING_REVIEWS_INLINE_PATTERN.search(text)
+        if not match:
+            return None, None
+        rating = float(match.group(1))
+        reviews = int(match.group(2).replace(",", ""))
+        return rating, reviews
+
+    @staticmethod
+    def _parse_compact_count(number_str: str, suffix: str) -> int:
+        number = float(number_str.replace(",", ""))
+        if suffix:
+            suffix = suffix.upper()
+            if suffix == "K":
+                number *= 1_000
+            elif suffix == "M":
+                number *= 1_000_000
+        return int(number)
+
+    @classmethod
+    def _parse_reviews_from_detail_text(cls, text: str | None) -> int | None:
+        if not text:
+            return None
+
+        summary_match = cls.DETAIL_REVIEW_SUMMARY_PATTERN.search(text)
+        if summary_match:
+            return cls._parse_compact_count(
+                summary_match.group(1), summary_match.group(2) or ""
+            )
+
+        generic_match = cls.GENERIC_REVIEWS_PATTERN.search(text)
+        if generic_match:
+            return cls._parse_compact_count(
+                generic_match.group(1), generic_match.group(2) or ""
+            )
+
+        return None
+
+    @staticmethod
+    async def _extract_detail_panel_text(page, business_name: str | None) -> str:
+        panel_text = ""
+        for _ in range(6):
+            panel = await page.query_selector(SELECTORS["detail_panel_container"])
+            if panel is None:
+                await page.wait_for_timeout(500)
+                continue
+
+            panel_text = await panel.inner_text()
+            panel_aria_label = (await panel.get_attribute("aria-label") or "").strip()
+
+            if business_name and panel_aria_label.lower() == business_name.lower():
+                return panel_text
+
+            await page.wait_for_timeout(500)
+
+        return panel_text
+
+    @staticmethod
     def _parse_rating_label(aria_label: str) -> tuple[float | None, int | None]:
- 
+        
         import re
 
         rating_match = re.search(r"(\d+(\.\d+)?)\s*(?:stars?|out of 5)", aria_label)
