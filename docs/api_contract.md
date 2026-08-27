@@ -1,5 +1,4 @@
-# SDIP Scraper Engine
-
+# SDIP Scraper Engine 
 
 ## 1. Queue architecture: raw Redis (not Celery/RQ, not BullMQ)
 
@@ -11,7 +10,7 @@ Redis directly with plain client libraries**, pushing/reading plain JSON,
 no queue framework in between.
 
 - Backend (Node): `ioredis` or `redis` — pushes JSON via `LPUSH`
-- Scraper (Python): `redis-py` — reads JSON via `BRPOP`
+- Sraper (Python): `redis-py` — reads JSON via `BRPOP`
 - Queue key: **`job_queue`** 
 
 ## 2. End-to-end flow
@@ -22,7 +21,7 @@ no queue framework in between.
    ```json
    { "jobId": "string", "scraperType": "linkedin", "inputParams": { ... } }
    ```
-4. Scraper's worker (`workers/redis_worker.py`) `BRPOP`s that same list
+4. Sraper's worker (`workers/redis_worker.py`) `BRPOP`s that same list
 5. On pickup, the worker sets `status: "running"` in MongoDB
 6. The worker runs the matching scraper (see Section 4 for envelope shape)
 7. The worker saves the result to the `results` collection and sets the
@@ -89,7 +88,7 @@ Notes on the confirmed Result schema:
   the Jobs collection must have `userId` set on the job doc (as an
   ObjectId) before the worker picks up the corresponding queue message.
 
-Scraper connects directly via `pymongo` (no API call back to Backend's
+Sraper connects directly via `pymongo` (no API call back to Backend's
 Node server) — per his instruction. Job status writes: `running`,
 `completed`, `failed`. `pending` is set by Backend's side only.
 
@@ -160,7 +159,7 @@ Source of truth: `shared/schema.py::RESULT_FIELDS`.
 The dashboard expects: `Pending`, `Running`, `Completed`, `Failed`.
 
 - `Pending` is set by Backend when the job doc is first created in MongoDB.
-- `Running`, `Completed`, `Failed` are set by Scraper's worker directly
+- `Running`, `Completed`, `Failed` are set by Sraper's worker directly
   in MongoDB (`shared/mongo_store.py::set_job_status`), as the job is
   picked up and finishes.
 

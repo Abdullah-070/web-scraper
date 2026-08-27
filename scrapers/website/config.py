@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 
-
 from shared.text_patterns import EMAIL_REGEX, PHONE_REGEX  # noqa: F401
 
 SOCIAL_DOMAINS = [
@@ -36,9 +35,14 @@ TECH_SIGNATURES = {
 
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("WEBSITE_SCRAPER_TIMEOUT_SECONDS", "15"))
 
-
 CONTACT_PAGE_KEYWORDS = ["contact", "about", "support"]
 
 FALLBACK_CONTACT_PATHS = ["/contact", "/contact-us"]
 
 MAX_CONTACT_PAGES_TO_FETCH = int(os.environ.get("WEBSITE_MAX_CONTACT_PAGES", "3"))
+
+
+ENABLE_JS_RENDER_FALLBACK = (
+    os.environ.get("WEBSITE_ENABLE_JS_RENDER_FALLBACK", "true").lower() == "true"
+)
+JS_FRAMEWORK_SIGNATURES = ["react", "__next_data__", "vue", "ng-version", "__nuxt"]

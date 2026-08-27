@@ -37,8 +37,12 @@ def configure_logging() -> None:
     handler.setFormatter(logging.Formatter(LOG_FORMAT))
     handler.addFilter(_JobIdFilter())
 
+    # (No global LogRecordFactory or makeRecord monkeypatching needed.)
+
     root_logger.addHandler(handler)
-    root_logger.propagate = False
+    # Leave propagation enabled so capture tools (pytest caplog)
+    # receive the same LogRecord objects and can observe `job_id`.
+    root_logger.propagate = True
 
 
 def get_job_logger(name: str, job_id: str | None = None) -> logging.LoggerAdapter:

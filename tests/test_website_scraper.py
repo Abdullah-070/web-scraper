@@ -1,6 +1,8 @@
 """
 Tests for the Website scraper.
 
+Mocks `requests.get` directly (via monkeypatch) rather than hitting any
+live site -- no network calls happen during these tests.
 """
 
 from unittest.mock import Mock
@@ -119,7 +121,7 @@ async def test_page_with_no_contact_info_returns_all_none_fields(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mailto_and_tel_hrefs_extracted_even_without_visible_text(monkeypatch):
-    
+ 
     icon_only_html = """
     <html><body>
       <a href="mailto:contact@example.com" aria-label="Email us"><svg></svg></a>
@@ -218,3 +220,26 @@ async def test_contact_page_failure_does_not_crash_job(monkeypatch):
 
     assert result["status"] == "completed"
     assert result["results"][0]["emails"] is None
+
+
+@pytest.mark.asyncio
+async def test_js_render_fallback_attempted_when_react_page_has_no_contact_info(monkeypatch):
+   
+    react_html = '<html><body><div id="root">React app shell, no static contact info</div></body></html>'
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: _mock_response(react_html))
+
+    scraper = WebsiteScraper(job_id="test-job-12")
+    result = await scraper.run({"website_url": "https://example.com"})
+
+    assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_js_render_fallback_skipped_when_static_fetch_found_something(monkeypatch):
+    react_html = '<html><body>Contact: hello@example.com <script>react</script></body></html>'
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: _mock_response(react_html))
+
+    scraper = WebsiteScraper(job_id="test-job-13")
+    result = await scraper.run({"website_url": "https://example.com"})
+
+    assert result["results"][0]["emails"] == ["hello@example.com"]
